@@ -1,0 +1,282 @@
+# Problem 3
+###############################################################################
+# part a
+# I tried two different methods, but the first method is too slow!
+# so I turn to use bisection method, which is much faster
+# However, I listed two methods I used
+
+##### method 1
+integrand=function(x)
+{
+  1/sqrt(2*pi)*exp(-x^2/2)
+}
+
+# for a give probability p
+# find the inverse of F(x)=p
+
+find_inverse=function(p,start,end,step)
+{
+  # p_get is the area of the integral (F(x))
+  p_get<- 0
+  end<- start+step # initiate end
+  i<- 0
+  while (p_get<p)
+  {
+    p_get <- integrate(integrand,lower=start,upper=end)$value
+    end<- end+step
+    # print(end)
+    i<- i+1
+    # print(i)
+    
+  }
+  return(end-step)
+  
+}
+
+# how to defind the lower and upper level of the integral
+
+options(digits=10)
+
+# try different values of lower level, integral from the lower level to 0 should be 0.5
+integrate(integrand,-5,0)$value
+#[1] 0.4999997133
+integrate(integrand,-6,0)$value
+#[1] 0.499999999
+integrate(integrand,-7,0)$value
+#[1] 0.5
+integrate(integrand,-8,0)$value
+#[1] 0.5
+# as we can see, when the lower level equals to -7, we can have 0.5 when integrating
+# form -7 to 0, so there's no need to set the lower level smaller than -7
+
+# to find the upper level, the integral from -7 to upper level should be 1
+integrate(integrand,-7,7)$value
+#[1] 1
+integrate(integrand,-7,6)$value
+#[1] 0.999999999
+# for the same reason, we can set the upper level to be 7
+
+
+start=-7
+end=7
+# to test, set the step=0.0001
+step=0.0001
+# when p=0.5, the F inverse should equal to 0
+p<- 0.5
+ptm<- proc.time()
+x<- find_inverse(p,start,end,step)
+proc.time()-ptm
+#  the value of x is 
+# [1] 9.999999702e-05, which is very close to 0
+# and the time is
+# 0.39 0.00 0.42 
+
+# compare the R-inside inverse cdf function of normal distribution
+
+ptm<- proc.time()
+qnorm(0.5)
+proc.time()-ptm
+# the time is 
+# 0    0    0 
+
+# as we can see, this method is very slow, so I decide to use bisection root finding
+# method to find the inverse function
+
+###### method 2 : bisection method
+# myfun is a fpnction eqpals F(x)-p, where F(x) is the cdf of X
+myfun=function(x,p){
+  f= pnorm(x)-p
+  return(f)
+}
+
+# rootfinding is a function using bisection method to find root
+rootfinding=function(p,e){
+  r_root= 0 
+  l_root= 0
+  while (myfun(l_root,p)<0){
+    l_root=l_root+0.1
+  }
+  while (myfun(r_root,p)>0){
+    r_root=r_root-0.1
+  }
+  m_root= (r_root+l_root)/2
+  
+  while (abs(myfun(m_root,p))>e){
+    if(myfun(l_root,p)*myfun(m_root,p)<0){
+      r_root=m_root
+    }
+    else{
+      l_root=m_root
+    }
+    m_root=(l_root+r_root)/2
+    # print(m_root)
+  }
+  root=m_root
+  return(root)
+}
+# set e=10^-5 and p=0.5
+e<- 10^-5
+p<- 0.5
+
+ptm<- proc.time()
+x<- rootfinding(0.5,10^-5)
+proc.time()-ptm
+# the time is 
+# user  system elapsed 
+# 0    0    0
+# Yeah! this method is much faster than the last method
+# now let's see whether the result is correct
+# the answer of rootfinding is suppose to be 0
+x
+#[1] 0
+# it's correct!
+
+##################################################################################
+#part b
+set.seed(123)
+sampler<- runif(10000,0,1)
+# x is a vector to store the values for x=F_inv(U)
+x<- c()
+for (i in 1:length(sampler))
+{
+  x[i]<- rootfinding(sampler[i],e)
+  print(i)
+  
+}
+# to test whether my samper is correct and compare it to rnorm
+par(mfrow=c(1,2))
+hist(x,main='my sample')
+hist(rnorm(10000),main='R-inside sample')
+# as we can see, it's a normal distribution, so my sampler is correct
+# to further test its normality, I applied qqnorm to x
+par(mfrow=c(1,1))
+qqnorm(x)
+# the result turns out to be very good!!!
+
+
+##################################################################################
+#part c
+
+# since normal distribution is symmetric, we only have to generate |X|, where X~N(0,1)
+# then we generate a U and set X = |X| if U ¡Ü 0.5 and set X = ???|X| if U > 0.5
+
+# so |X| is non-negative and has density function:f(x)=sqrt(2/pi)*exp(-x^2/2), x>=0
+# for Q, which has a distribution of exp(1), the density function is g(x)=exp(-x), x>=0 
+
+# now to determine the value of c
+# let h(x)=f(x)/g(x)=sqrt(2/pi)*exp(x-x^2/2)
+h=function(x){sqrt(2/pi)*exp(x-x^2/2)}
+
+# then h'(x)=sqrt(2/pi)*exp(1-x)*(1-x)
+h_deri=function(x){sqrt(2/pi)*exp(1-x)*(1-x)}
+
+## to find the maximum of h(x) is to find the root of h'(x)
+# uniroot(h_deri,lower=-100,upper=100,tol=0.0001)
+# $root
+# [1] 1.000002582
+
+# therefore when x=1, h(x) has its maximum,which is sqrt(2e/pi)
+# so we can make c=sqrt(2e/pi) to make sure that f(x)<= c*g(x)
+
+# now begin the sampling process
+
+# step1. Generate Q with an exponential distribution at rate 1
+# that is, generate U and set Q = ???ln(U)
+
+# generate U:( I tried to use the method taught in class to sample from 1:2^64, but the
+# result is too long to be a vector, so I might just use runif to sample)
+
+u1<- runif(10000)
+q<- -log(u1)
+
+# step2.  generate U, if U ¡Ü f(x)/cg(x) set |X| = Q ; otherwise go back to step 1
+# f(x)/cg(x)=exp(-(x-1)^2/2)
+
+u2<- runif(10000)
+x_abs<- c()
+j<- 1
+for (i in 1:10000)
+{
+  if (u2[i]< exp(-(q[i]-1)^2/2) )
+ {
+    x_abs[j]<- q[i]
+    j<- j+1
+  }
+}
+# step3. generate U. Set X = |X| if U ¡Ü 0.5, set X = ???|X| if U > 0.5
+x<- 1:length(x_abs)
+u3<- runif(length(x_abs))
+x[which(u3<=0.5)]<- x_abs[which(u3<=0.5)]
+x[which(u3>0.5)]<- -x_abs[which(u3>0.5)]
+  
+# compare my sampler and R-inside normal rv sampler
+par(mfrow=c(1,2))
+hist(x,main='Accept_Reject method to sample X~N(0,1)')
+hist(rnorm(10000),main='R inside sampler to sample X~N(0,1)')
+# as we can see,my sampler is pretty good, it's very close to R-inside sampler
+par(mfrow=c(1,1))
+
+# we can also use a qqnorm to test its normality
+qqnorm(x)
+# as we can see, the normality of it is very good
+
+
+
+#################################################################################
+# Problem 4
+set.seed(123)
+# to sample a geometric r.v
+# the values of x should be 1,2,3,...
+# the values of p should be p,(1-p0)*p0,(1-p0)^2*p0,...., where p0=10^-5
+
+p0<- 10^(-5)
+# suppose there are n elements in a and p
+# fisrt, to test the appropriate value for n
+# when n=10^6
+n<- 10^6
+a<- 1:n
+p<- (1-p0)^(a-1)*p0
+sum(p)
+#[1] 0.9999546
+
+# when n=10^7
+n<- 10^7
+a<- 1:n
+p<- (1-p0)^(a-1)*p0
+sum(p)
+#[1] 1
+# therefore when there are 10^7 elements in a and p
+# the sum of p can reach 1, so set n=10^7
+
+
+# x_sampler is a function to randomly select 10 rvs with geometric distribution
+# return x, which is a vector with 10 elements
+x_sampler=function(a,p)
+{
+  u<- runif(n)
+  interval<- c()
+  interval<- cumsum(p)
+  for (j in 2:n)
+  { 
+    if (interval[j-1]<u[k]&& u[k]<interval[j])
+      x[k]<- a[j-1]
+    
+  }  
+  return(x)
+}
+
+
+ptm<- proc.time()
+x_sampler(a,p)
+proc.time()-ptm
+
+#user  system elapsed 
+#0.86 0.05 0.98 
+# My CPU is 2.13GHz
+
+# to compare the R-inside geometric rv sampler
+ptm<- proc.time()
+rgeom(10,p0)
+proc.time()-ptm
+# user  system elapsed 
+# 0.00 0.00 0.03 
