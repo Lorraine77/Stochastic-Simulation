@@ -1,0 +1,373 @@
+# part a
+# assume the paremeters are known
+
+# estimate of parameters
+# let theta=c(alpha0,alpha1,p,q,phi1,phi2,phi3,phi4,sigma)
+alpha0<- -0.3577
+alpha1<- 1.522
+p<- 0.9049
+q<- 0.7550
+sigma<- 0.7690
+phi1<- 0.014
+phi2<- -0.058
+phi3<- -0.247
+phi4<- -0.213
+
+theta<- c(alpha0,alpha1,p,q,phi1,phi2,phi3,phi4,sigma)
+
+gdpdata<- read.table('file:///Users/Lorraine/Desktop/gdp_data.txt',header=T)
+g1<- gdpdata[1:266,2]
+g2<- gdpdata[2:267,2]
+y.data<- 100*(log(g2)-log(g1))
+
+
+# given data and parameters
+# we want to find P(s(t)=0|y=y.data)
+# instead, we can find 
+# P(s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT|y(1)=y.data(1),y2=y.data(2)...y(T)=y.data(T))
+# = P(s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT,y(1)=y.data(1),y2=y.data(2)...y(T)=y.data(T))/b
+# where b= P(y(1)=y.data(1),y2=y.data(2)...y(T)=y.data(T)), which is a constant
+
+# consider the numerator
+#  P(s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT,y(1)=y.data(1),y2=y.data(2)...y(T)=y.data(T))
+# = P(y(1)=y.data(1),y2=y.data(2)...y(T)=y.data(T)|s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT)*P(s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT)
+# the first part 
+# P(y(1)=y.data(1),y2=y.data(2)...y(T)=y.data(T)|s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT)
+# =P(z(1)=z1,z(2)=z2...z(T)=zT|s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT)
+# =P(z(1)=z1,z(2)=z2...z(T)=zT)
+# =P(eps(1)=e1,eps(2)=e2,...eps(T)=eT)
+# = prod(P(eps(i)=ei))
+# the second part 
+# P(s(1)=s1,s(2)=s2,s(3)=s3....s(T)=sT)
+# prod(P(sk-1sk))
+
+# therefore, the numerator reduced to the form
+# prod(f(eps;0,sigma))*prod(P(sk-1sk))
+# which is the stationary distribution we want to sample from
+
+
+
+# this function computes the transition probability along the chain: P12*p23*p34...*pT-1pT
+prob.tran=function(state,theta)
+{
+  p<- theta[3]
+  q<- theta[4]
+  n<- length(state)
+  prob<- sapply(1:(n-1), function(i) ifelse(state[i]==state[i+1],ifelse(state[i]==0,q,p),ifelse(state[i]==0,1-q,1-p)))
+  
+  return(log(prob))    # the reason why I returned log is explained later 
+}
+
+
+# this function computes prod(f(eps(i);0,sigma))
+prob.eps=function(state,y.data,theta)
+{
+  alpha0<- theta[1]
+  alpha1<- theta[2]
+  phi1<- theta[5]
+  phi2<- theta[6]
+  phi3<- theta[7]
+  phi4<- theta[8]
+  sigma<- theta[9]
+  
+  z<- y.data-alpha1*state-alpha0
+  # eps(t)=z(t)-sum(i=1:4,phi[i]*z(t-j)), eps starts at t=5
+  
+  # eps(5)=z(5)-phi1*z(4)-phi2*z(3)-phi3*z(2)-phi4*z(1)
+  # eps(6)=z(6)-phi1*z(5)-phi2*z(4)-phi3*z(3)-phi4*z(2)
+  # ....
+  # eps(266)=z(266)-phi1*z(265)-phi2*z(264)-phi3*z(263)-phi4*z(262)
+  
+  eps<- z[5:266]-phi1*z[4:265]-phi2*z[3:264]-phi3*z[2:263]-phi4*z[1:262]
+  prob<- dnorm(eps,0,sigma) # the length of prob is 262
+  return(log(prob))
+}
+
+
+
+
+# use MH to build the markov chain
+MH.gdp=function(initialstate,endtime,y.data,theta)
+{
+  
+  state.current<- initialstate
+  # m is a matrix, of which ith column is the values of s1,..sT at the ith iteration
+  m<- matrix(0,nrow=length(state.current),ncol=endtime)
+  
+  # I made a vector here to decide the optimal endtime for markov chain
+  # n stores the number of s(t)==1, t=1,2,3...T, in each iteration
+  n<- c()
+  
+  # begin Markov chain
+  for (k in 1:endtime)
+  { 
+    
+    # proposal for next stage
+    # for randomly select a position
+    i<- sample(1:266,1)
+    state.next<- state.current
+    state.next[i]<- ifelse(state.current[i]==0,1,0)
+    
+    # now we need to check whether 
+    # u<min(1,c), where c= (nu(w*)*q(w*,w))/(nu(w)*q(w,w*))
+    # suppose nu(w*) is the proposal state, nu(w) is the current state
+    # since q(w*,w)=q(w,w*), which reduced c to be nu(w*)/nu(w)
+    
+    # suppose 
+    # nu.next<- prod(prob.tran(state.next))*prod(prob.eps(state.next,y.data,theta))
+    # nu.current<- prod(prob.tran(state.current))*prod(prob.eps(state.current,y.data,theta))
+    # I first try to compute c= nu.next/nu.current directly but found that 
+    # c is very unstable since nu.next and nu.current can easily be 0 when n is large
+    # so I change them into log form and instead compute c=exp(log(nu.next)-log(nu.current))
+    
+    nu.next.log<- sum(prob.tran(state.next,theta))+sum(prob.eps(state.next,y.data,theta))
+    nu.current.log<- sum(prob.tran(state.current,theta))+sum(prob.eps(state.current,y.data,theta))
+    c<- exp(nu.next.log-nu.current.log)
+    
+    
+    if (runif(1)< min(1,c)) {
+      state.current<- state.next
+    }
+    
+    m[,k]<- state.current
+    n[k]<- sum(state.current)
+    
+  }
+  
+  return(list(states=m,count0=n))
+  
+}
+
+
+
+# test differnt values of iteration numbers 
+initialstate<- sample(c(0,1),266,replace=T)
+N<- 10^4
+test1<- MH.gdp(initialstate,N,y.data,theta)
+plot(test1$count0,main='T=10^4')
+ 
+
+
+
+
+
+
+
+
+
+
+initialstate<- sample(c(0,1),266,replace=T)
+N<- 10^6
+test2<- MH.gdp(initialstate,N,y.data,theta)
+plot(test2$count0,main='T=10^6')
+ 
+# as we can see from the plot, the burn in is much smaller than 2e+5
+# I decided to throw out the first 10^4
+
+# the probability that P(s(t)==0) for each t is
+ratio<- 1-rowSums(test2$states[,(10^4+1):N])/N
+plot(ratio,type='l',main='probability of S(t)=0')
+ 
+
+
+# now to find the recession state
+recession<- which(ratio>0.5)
+#[1]   6   7   8  26  27  28  40  41  42  43  44  53  54  55  91  92  93  94  95 106 108 109
+#[23] 110 111 112 130 131 132 133 134 137 138 139 140 141 142 143 173 174 175 176 216 217 218
+#[45] 219 243 244 245 246 247 248 249 250 251 252 256
+# among the 266 states, there are 56 of them in the state of recession
+
+## part b
+
+ 
+# define the prior distributions for all parameters
+# notice that p,q and sigma must be larger than 0
+
+g.alpha0=function(x) {dnorm(x,alpha0,3)}
+g.alpha1=function(x) {dnorm(x,alpha1,3)}
+g.p=function(x) {dunif(x,0,1)}
+g.q=function(x) {dunif(x,0,1)}
+g.phi1=function(x) {dnorm(x,phi1,3)}
+g.phi2=function(x) {dnorm(x,phi2,3)}
+g.phi3=function(x) {dnorm(x,phi3,3)}
+g.phi4=function(x) {dnorm(x,phi4,3)}
+g.sigma=function(x) {dunif(x,0,5)}
+
+
+
+# this function computes the transition probability along the chain: P12*p23*p34...*pT-1pT
+prob.tran=function(state,theta)
+{
+  p<- theta[3]
+  q<- theta[4]
+  n<- length(state)
+  prob<-sapply(1:(n-1),function(i) ifelse(state[i]==state[i+1],ifelse(state[i]==0,q,p),ifelse(state[i]==0,1-q,1-p)))
+ 
+  return(log(prob))    # the reason why I returned log is explained later 
+}
+
+
+# this function computes prod(f(eps(i);0,sigma))
+prob.eps=function(state,y.data,theta)
+{
+  alpha0<- theta[1]
+  alpha1<- theta[2]
+  phi1<- theta[5]
+  phi2<- theta[6]
+  phi3<- theta[7]
+  phi4<- theta[8]
+  sigma<- theta[9]
+  
+  z<- y.data-alpha1*state-alpha0
+  eps<- z[5:266]-phi1*z[4:265]-phi2*z[3:264]-phi3*z[2:263]-phi4*z[1:262]
+  prob<- dnorm(eps,0,sigma) 
+  return(log(prob))
+  
+}
+
+# this function computes the multiplication of all the prior functions for parameters
+prob.prior=function(theta)
+{
+  temp<- c(g.alpha0(theta[1]),g.alpha1(theta[2]),g.p(theta[3]),g.q(theta[4]),g.phi1(theta[5]),g.phi2(theta[6]),g.phi3(theta[7]),g.phi4(theta[8]),g.sigma(theta[9]))
+  return(log(temp))
+}
+
+
+# since p and q should be in the interval [0,1]
+# when we are proposing the next state for p and q, we have to consider this range
+# choose.pq is a function to determine the next state for p and q
+choose.pq=function(x0)
+{
+  x<- x0+rnorm(1,0,0.1)
+  while(x<0 |x>1)
+  {
+    x<- x0+rnorm(1,0,0.1)
+  }
+  return(x)
+}
+
+# choose.pq is a function to determine the next state for sigma
+choose.sigma=function(x0)
+{
+  x<- x0+rnorm(1,0,5)
+  while(x<0)
+  {
+    x<- x0+rnorm(1,0,5)
+  }
+  return(x)
+}
+
+
+MH.theta=function(initialstate,initialtheta,endtime)
+{
+  
+  theta.current<- initialtheta
+  state.current<- initialstate
+  
+  para.m=matrix(0,9,endtime)
+  n<- c()
+  
+  j<- 0
+  for (k in 1:endtime)
+  { 
+    
+    # proposal for next stage
+    # for randomly select a position
+    i<- sample(1:266,1)
+    state.next<- state.current
+    state.next[i]<- ifelse(state.current[i]==0,1,0)
+    
+    # proposal for the parameters for next state
+    theta.next<- theta.current
+    # at each iteration, I only changed the value of one phi
+    # the reason will be shown later
+   j<- sample(5:8,1)
+   theta.next[j]<-  theta.current[j]+rnorm(1,0,0.1)
+   # change alpha0,alpha1, p,q and sigma
+   theta.next[c(1,2)]<- theta.current[c(1,2)]+rnorm(2,0,0.1)
+   theta.next[3]<- choose.pq(theta.current[3])
+   theta.next[4]<- choose.pq(theta.current[4])
+   theta.next[9]<- choose.sigma(theta.current[9])
+    
+    
+    # now we need to check whether 
+    # u<min(1,c), where c= (nu(w*)*q(w*,w))/(nu(w)*q(w,w*))
+    # suppose nu(w*) is the proposal state, nu(w) is the current state
+    # since q(w*,w)=q(w,w*), which reduced c to be nu(w*)/nu(w)
+ 
+    
+    # I noticed that in the function prob.eps
+    # when I change phi1, phi2 ,phi3 and phi4 at the same time
+    # eps can become very large during iterations
+    # then dnorm(eps,0,sigma) would be closer to 0
+    # so log(dnorm(eps,0,sigma)) is -Inf, which would cause error
+    
+    # To avoid this situation, I tried different remedial methods:
+    # (1): I only change one of phi's at each iteration
+    # (2): increase the change range of sigma, which would decreases
+    #    the number of 0 values of dnorm(eps,0,sigma)
+    #    (I set sigma.next<- sigma.current+rnorm(1,0,5))
+    # (3): write the following 'if condition' to avoid NaN
+    
+    temp1<- sum(prob.eps(state.next,y.data,theta.next))
+    temp2<- sum(prob.eps(state.current,y.data,theta.current))
+
+    if (sum(c(temp1,temp2)==-Inf)==0)    
+{  
+      
+  nu.next.log<- sum(prob.tran(state.next,theta.next))+temp1+sum(prob.prior(theta.next))
+  nu.current.log<- sum(prob.tran(state.current,theta.current))+temp2+sum(prob.prior(theta.current))
+  c<-exp(nu.next.log-nu.current.log)
+  
+  if (runif(1)< min(1,c)) {
+    state.current<- state.next
+    theta.current<- theta.next
+    j<- j+1
+   }
+}
+    para.m[,k]<- theta.current
+    n[k]<- sum(state.current)
+
+  }
+  return(list(para.matrix=para.m,n=n,acceptrate=j/endtime))
+}
+
+
+## run my markov chain
+initialstate<- sample(c(0,1),266,replace=T)
+initialtheta<- c()
+initialtheta[1]<- rnorm(1,alpha0,5)
+initialtheta[2]<- rnorm(1,alpha1,5)
+initialtheta[3]<- runif(1,0,1)
+initialtheta[4]<- runif(1,0,1)
+initialtheta[5]<- rnorm(1,phi1,5)
+initialtheta[6]<- rnorm(1,phi2,5)
+initialtheta[7]<- rnorm(1,phi3,5)
+initialtheta[8]<- rnorm(1,phi4,5)
+initialtheta[9]<- runif(1,0,5)
+
+N<- 10^6
+test1<- MH.theta(initialstate,initialtheta,N)
+plot(test1$n)
+
+
+
+
+for (i in 1:9)
+{
+  hist(test1$para.matrix[i,2e+5:N],main=paste('histogram for theta',i))
+}
+
+ 
+
+
+# as we can see from the graph, the estimate of theta Hamilton got are in the range of
+# the theta I got, however, these values are not very close to the mean of each histogram
+# I assume maybe a longer chain is helpful
+
+# the accept rate is 
+acceptrate<- test1$acceptrate
+# 8e-02, which is approximately 8%
+ 
+
+
