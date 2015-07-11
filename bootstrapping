@@ -1,0 +1,347 @@
+# problem 2
+
+or<- read.table('C:/Users/Administrator/Desktop/o_ring_data.txt',header=T)
+
+r<- or$Failure
+t<- or$Temp
+n<- length(r)
+
+# the loglikelihood function of the logistic model is:
+or.L= function(theta){
+  alpha=theta[1]
+  beta=theta[2]
+  l= r*exp(alpha+beta*t)/(1+exp(alpha+beta*t))+(1-r)/(1+exp(alpha+beta*t))
+  L=sum(log(l))
+  return(L)
+}
+
+# to maximize the loglikelihood, is to minimize -loglikelihood
+or.L.neg=function(theta){
+  alpha=theta[1]
+  beta=theta[2]
+  l= r*(alpha+beta*t)-log(1+exp(alpha+beta*t))
+  L=sum(l)
+  return(-L)
+}
+
+
+theta<- c(0.02,0.01)
+nlm(or.L.neg,theta)
+
+# the mle for alpha and beta is 15.047603 and -0.232232
+
+# part a
+# (i)
+# to find the 95% confidence interval for alpha and beta
+# since theta.mle-theta.true~N(0,I(theta.true)^-1)
+# we first compute I(theta.true)^-1
+# note that I(theta.true)=-Hl(theta.true)=-Hl(theta.mle) (approximately)
+alpha.mle<-  15.047603
+beta.mle<- -0.232232
+theta.mle<- c(alpha.mle,beta.mle)
+
+library(numDeriv)
+hes<- hessian(or.L,theta.mle)
+I<- -hes
+var<- solve(I)
+#[,1]        [,2]
+#[1,] 54.5421775 -0.79782313
+#[2,] -0.7978231  0.01173623
+
+# therefore var(alpha)=54.5421775, var(beta)=0.01173623
+var.alpha<- 54.5421775
+var.beta<- 0.01173623
+
+# to build the confidence interval for alpha and beta, I used z distribution here
+# aplha:
+CI.alpha<- c(alpha.mle-sqrt(var.alpha)*qnorm(1-0.05/2),alpha.mle+sqrt(var.alpha)*qnorm(1-0.05/2))
+# CI.alpha=(0.5727445 29.5224615) 
+
+CI.beta<- c(beta.mle-sqrt(var.beta)*qnorm(1-0.05/2),beta.mle+sqrt(var.beta)*qnorm(1-0.05/2))
+# CI.beta= ( -0.44456251 -0.01990149)
+
+
+# (ii)
+# this time, we use I(theta.true)=grad(theta.mle)*tran(grad(theta.mle)) to approximate
+# the variance covariance matrix
+
+grad<- grad(or.L,theta.mle)
+I<- grad%*%t(grad)
+var<- solve(I)
+# it seems like that the I matrix is singular, we cannot compute var through solve function
+
+
+# part b 
+sim.T<- rnorm(100000,mean(t),sd(t))
+p.failure <- exp(alpha.mle+beta.mle*sim.T)/(1+exp(alpha.mle+beta.mle*sim.T))
+sim.R <- as.numeric(runif(100000)<p.failure)
+
+
+f <- function(x){
+r<- x[1]
+t<- x[2]
+return((r*exp(alpha.mle+beta.mle*t)+(1-r))/(1+exp(alpha.mle+beta.mle*t)))
+  }
+
+# to form the sample of Z, which is a 2*100000 matrix
+# the first row and second row are corresponding to R and T respectively
+sim.Z <- sapply(1:100000, function(x) grad(f,c(sim.R[x],sim.T[x]))/f(c(sim.R[x],sim.T[x])))
+
+#  there are four rows in sim.ZZT, corresponding to var(alpha),cov(alpha,beta)
+# cov(beta,alpha) and var(beta)
+sim.ZZT <- sapply(1:100000, function(x) sim.Z[,x]%*%t(sim.Z[,x]))
+
+# we need the first and the fourth row of sim.ZZT, and take mean of 100000 values
+var.theta <- c(mean(sim.ZZT[1,]),mean(sim.ZZT[4,]))
+
+CI.alpha<- c(alpha.mle-sqrt(var.theta[1])*qnorm(1-0.05/2),alpha.mle+sqrt(var.theta[1])*qnorm(1-0.05/2))
+# CI.alpha=( 8.034742 22.060464) 
+
+CI.beta<- c(beta.mle-sqrt(var.theta[2])*qnorm(1-0.05/2),beta.mle+sqrt(var.theta[2])*qnorm(1-0.05/2))
+# CI.beta= ( -0.4088391 -0.0556249)
+
+
+# part c
+# bootstrapping
+
+# I first used nlm to find the mle, but there are a lot of warnings and the results
+# are not very good, even if I tried deleting th extreme cases when failures are all
+# 1's or all 0's, the problem still stands.
+
+# Then I tried Nic's method posted on wiki, he used logistic regression and only keep
+# the resamples where the regression converges, and it turns out to produce pretty good result
+# thanks nik
+
+# the sample we have is from data
+# for R, resample 100000 times
+N<- 100000
+
+resamples <- list()
+alphas <- c()
+betas <- c()
+
+for (i in 1:N) {
+  
+# bootstrap the data
+resamples[[i]] <- or[sample(1:23, replace = TRUE),]
+  
+# compute the MLE with a particular bootstrap resample
+  
+logreg <- glm(Failure ~ Temp, data = resamples[[i]], family = "binomial")
+  
+if (logreg$converged==TRUE) {       
+    
+# store the alpha and beta coefficients
+    
+alphas <- c(alphas, logreg$coefficients[1])
+    
+betas <- c(betas, logreg$coefficients[2])     
+    
+  }
+  
+}
+
+alpha.error <- mean(alphas) - alpha.mle
+# the error is 5.377866
+beta.error <- mean(betas) - beta.mle
+# the error is -0.08481421
+
+# to find the 95% confidence interval for alpha and beta
+CI.alpha<- quantile(alphas,c(0.025,0.975))-alpha.error
+# CI.alpha= (-1.006463 33.783668)
+CI.beta<- quantile(betas,c(0.025,0.975))-beta.error
+# CI.beta= (-0.514586324  0.008207923)
+
+# the confidence in a, b and c are different, but within the acceptance range
+
+
+## problem 3
+### Problem 3
+
+# X(t) is a markov chain
+sampler.x=function(n)
+{
+  alpha<- 0.02
+  p<- matrix(c(1-alpha,alpha,alpha,1-alpha),nrow=2)
+  
+  # path stores the  state along the chain, from 0 to n
+  path<- c()
+  
+  # let 1 represents 'fair' and 2 represents 'cheating'
+  # the state at time 0 is fair
+  path[1]<- 1
+  
+  for (i in 2:n)
+  {
+    path[i]<- sample(c(1,2),1,prob=p[path[i-1],]) 
+    
+  }
+  return(path) 
+}
+
+# sampler of Y(t)
+sampler.y=function(path)
+{
+  y<- c()
+  n<- length(path)
+  for (i in 1:n) 
+  {
+    y[i]<- ifelse(path[i]==1,sample(1:6,1,prob=rep(1/6,6)),sample(1:6,1,prob=c(rep(3/16,5),1/16)))
+  }
+  return(y)
+}
+
+
+# The state space of Z consists of all the sequences made of  'Fair' and 'Cheating',
+# i.e. each state is in the form of FFFFCCCCCCCCCFFFFFFFCCCFFFFF...
+
+
+
+# in this problem, we want to sample from z, whose stationary distribution is nu
+# to make the proposal symmetric: at each state, we only change the value of one 
+# position. For example, if current state is FFCC, and the position we randomly
+# chose is 3, then the next state is FFFC. 
+
+
+# prob.mc is a function compuates the probability along a markov chain
+# i.e. prob.mc= P(s0s1)*P(s2s2)...*P(sn-1sn)
+prob.mc=function(state)
+{
+  n<- length(state)
+  prob<- c()
+  for (i in 1:n-1)
+  {
+    prob[i]<- ifelse(state[i+1]==state[i],0.98,0.02)
+  }
+  return(log(prob))    # the reason why I returned log is explained later 
+}
+
+# prob.die is a funtion returns the probability of observed die values for a given
+# markov chain
+# i.e. prob.die=G_s0(y0)*G_s1(y1)...*G_sn(yn)
+prob.die=function(state,die)
+{
+  prob<- c()
+  for (i in 1:length(state))
+  {
+    prob[i]<- ifelse(state[i]==1,1/6,ifelse(die[i]==6,1/16,3/16))
+    
+  }
+  
+  return(log(prob))
+}
+
+
+# casino.mcmc is the metropilis hasting algorithm, takes initialstate, endtime and die
+# as input, where die is the observed values of y
+
+casino.mcmc=function(initialstate,endtime,die)
+{
+  n<- length(initialstate)
+  state.current<- initialstate
+  
+  # I made a vector here to decide the burn in 
+  # suppose test = the number of '1'(fair) in each state
+  Nfair <- c()
+  
+  # f,m is a matrix records the value of the markov chain in each state
+  f.m<- matrix(0,nrow=1000,ncol=endtime)
+  
+  # begin Markov chain
+  for (k in 1:endtime)
+  { 
+    
+    # proposal for next stage
+    # for randomly select a position
+    i<- sample(1:n,1)
+    state.next<- state.current
+    state.next[i]<- ifelse(state.current[i]==1,2,1)
+    
+    # now we need to check whether 
+    # u<min(1,c), where c= (nu(w*)*q(w*,w))/(nu(w)*q(w,w*))
+    # suppose nu(w*) is the proposal state, nu(w) is the current state
+    # since q(w*,w)=q(w,w*), which reduced c to be nu(w*)/nu(w)
+    # I used the log form  
+    
+    
+    nu.next.log<- sum(prob.mc(state.next))+sum(prob.die(state.next,die))
+    nu.current.log<- sum(prob.mc(state.current))+sum(prob.die(state.current,die))
+    c<- exp(nu.next.log-nu.current.log)
+    
+    
+    if (runif(1)< min(1,c)) {
+      state.current<- state.next
+    }
+    
+    f.m[,k]<- state.current
+    Nfair[k]<- sum(state.current==1)
+  }
+  
+  return(list(f=f.m,matrix,Nfair=Nfair))
+  
+}
+
+
+
+# first randomly sample a seqence for die values
+# for any given sequence of {F,C}
+seq<- sampler.x(1000)
+die<- sampler.y(seq)
+
+# sample an intial state of the MCMC
+initialstate<- sampler.x(1000)
+# run the MCMC for 10^6 times
+endtime<- 10^5
+
+
+test<- casino.mcmc(initialstate,endtime,die)
+
+# from the picture we can find out the burn in
+N0<- 4e+4
+
+
+# modify my casino.mcmc function to return proc.c, which is P(x(t)=c|die)
+casino.mcmc=function(initialstate,endtime,die,N0)
+{
+  n<- length(initialstate)
+  state.current<- initialstate
+  
+  
+  # f,m is a matrix records the value of the markov chain in each state
+  f.m<- matrix(0,nrow=1000,ncol=endtime)
+  
+  # begin Markov chain
+  for (k in 1:endtime)
+  { 
+    
+    
+    i<- sample(1:n,1)
+    state.next<- state.current
+    state.next[i]<- ifelse(state.current[i]==1,2,1)
+    
+    nu.next.log<- sum(prob.mc(state.next))+sum(prob.die(state.next,die))
+    nu.current.log<- sum(prob.mc(state.current))+sum(prob.die(state.current,die))
+    c<- exp(nu.next.log-nu.current.log)
+    
+    
+    if (runif(1)<min(1,c)) {
+      state.current<- state.next
+    }
+    
+    f.m[,k]<- state.current
+    
+  }
+  final<- f.m[,(N0+1):endtime]
+  prob.c<- sapply(1:1000, function(x) (sum(final[x,]==2)/(endtime-N0)))
+  
+  return(prob.c)
+  
+}
+
+
+
+# combine the results 
+prob.c.final<- do.call(cbind,replicate(4, casino.mcmc(initialstate,endtime,die),simplify=FALSE))
+prob.c.ave<- rowMeans(prob.c.final)
+
+
