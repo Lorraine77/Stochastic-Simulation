@@ -1,0 +1,156 @@
+## problem 1
+
+# part a
+# sample standard brownian motion B(t)
+# when t in [0,10] and detla.t=0.01
+# the number of delta.ts in interval [0,10]
+delta.t<- 0.01
+N<- 10/delta.t
+
+sampler.B=function(delta.t,N)
+{
+  sampler<- rnorm(N,0,delta.t)
+  B<- c()
+  B[1]<- 0
+  B[2:(N+1)]<- cumsum(sampler)  
+  return(B)
+}
+
+# test
+B1<- sampler.B(delta.t,N)
+B2<- sampler.B(delta.t,N)
+B3<- sampler.B(delta.t,N)
+plot(B1,ylim=c(-1,1),main='three symmetric random walks')
+points(B2,col='red')
+points(B3,col='green')
+
+
+
+# part c
+# i
+# sample Xi
+sampler.x =function(n)
+{
+  sample(c(1,-1),n,TRUE,prob=c(1/2,1/2))
+}
+
+x<- sampler.x(10^6)
+s<- cumsum(x)
+plot(s,ylim=c(-10^6,10^6))
+
+# as we can see, the plot of W(t)=S(nt)/2n is a horizontal line on y=0
+# In fact, taking the y-axis from -10^6 to 10^6 is equal to scaling S(nt) with 2n
+# W(t)=S(nt)/2n, from the Law of large numbers, we know that limit(S(nt)/n)=0, where
+# 0 is the mean of the random walk.
+# on the plot, the horizontal line y=0 is in accordance with the LLN
+
+# ii
+
+plot(s,ylim=c(-10^3,10^3))
+
+# from central limit theory, we know that when S(nt) is scaled by sqrt(n)
+# W(t)=S(nt)/sqrt(n) follows normal distribution N(0,t), i.e. random walk can
+# approxiamte brownian motion after scaling.
+
+# we can see the plot is a brownian motion, which is similar to the plot in part a
+
+## Problem 2
+# part a
+polling<- read.table('C:/Users/Administrator/Desktop/2012_Election_Polling_Data.csv',header=TRUE,sep=',')
+
+attach(polling)
+names(polling)
+# first rescale the Obama and Romney data
+rescale.ratio<- 100/(Obama+Romney)
+number.new<- number.of.samples*rescale.ratio
+Obama.new<- Obama*rescale.ratio
+
+
+## do regression
+poll.lm=lm(Obama.new~number.new, data=polling)
+summary(poll.lm)
+
+# Coefficients:
+#                 Estimate Std. Error t value Pr(>|t|)    
+#  (Intercept)   5.052e+01  1.794e-01 281.558   <2e-16 ***
+#  number.new    1.582e-05  2.431e-05   0.651    0.521    
+ 
+
+poll.anova= anova(poll.lm)
+
+#Response: Obama.new
+#           Df  Sum Sq Mean Sq F value Pr(>F)
+#number.new  1  0.3284 0.32835  0.4235 0.5209
+#Residuals  26 20.1564 0.77525  
+
+mu.mle= poll.lm$coefficients[2]
+# mu.mle= 1.581906e-05 
+sigma.mle= poll.anova[2,3]
+# [1] 0.7752474
+
+# part b
+
+# bootstrapping
+samples= list()
+mu=c()
+sigma=c()
+for (i in 1:10000) {
+  samples[[i]]= polling[sample(1:28, replace = T),]
+  sample.lm= lm(obama.new~num.new, data=samples[[i]])
+  sample.anova= anova(sample.lm)
+  
+  mu= c(mu,mle.sample$coefficients[2])
+  sigma= c(sigma,sample.anova[["Mean Sq"]][2])     
+}
+
+mu.error = mean(mu) - mu.mle
+# -0.0003662264 
+sigma.error = mean(sigma) - sigma.mle
+# [1] -0.03727536
+
+CI.mu= quantile(mu,c(0.025,0.975))-mu.error 
+#1.696977e-05 1.696977e-05 
+CI.sigma= quantile(sigma,c(0.025,0.975))-sigma.error
+#0.4156656 1.1946616 
+
+
+## Problem 3 
+# from class, we know we want to make relative error within 0.1,
+# we need make exp(sigma*3*sqrt(deltat)) < 1.01.
+sigma <- 0.3
+mu <- -0.45
+s0 <- 8
+K <- 10
+T <- 30
+delta_t <- (1/(3*sigma)*log(1.01))^2
+eps <- 3*sqrt(delta_t)
+
+AsianOption <- function(T,t){
+  n <- round(T/t)
+  BM <- cumsum(rnorm(n,0,3*sqrt(t)))
+  
+  #get price of the stock
+  time <- seq(from=0,to=T,length.out=n)
+  price <- function(i) s0*exp(mu*time[i]+sigma*BM[i])
+  
+  #get the price for the full path
+  path <- sapply(1:n,price)
+  
+  #get the price of asian option
+  optionprice <- max(0,mean(path)-K)
+  return(optionprice)
+}
+
+#use Monte Carlo to get mean of option price
+N=10000
+option <- c()
+for (i in 1:N){
+  option[i] <- AsianOption(T,delta_t)
+}
+
+mean(option)
+#[1] 1.661805
+
+optionprice <- exp(sigma*3*sqrt(delta_t))*mean(option)
+optionprice
+#[1] 1.678423
