@@ -1,0 +1,425 @@
+# Problem 2
+## part a
+
+# Metroplis Hastings Algrithm
+# Let's make clear what this problem asks 
+# in the hard-core model, the space of the morkov chain is |E|, which is all the feasible
+# configurations. 
+# at each iteration, we only change the state of one point if we can, if not, we just 
+# remain at the state
+
+# write a function to sample a Markov Chain with input size and T
+# size is the size of the grid and T is the iteration times
+
+MH.x=function(size,T)
+{
+
+  # I chose the zero matrix as the intial state (configuration)
+  graph<- matrix(0,size,size)
+  
+  # f.e is a vector which stores the value f(e)(i.e. the number of occupied points in
+  # a configuration)  for each time step in this markov chain
+  f.e<- c()
+  
+  # begin Markov chain
+  for (k in 1:T)
+  {
+ 
+  # randomly select a point graph[i,j] from current state 
+  i<-trunc(runif(1,1,size+1)) 
+  j<-trunc(runif(1,1,size+1))
+  
+  # to avoid the situation that the point we chose is on the boundary, we add a 
+  # 'protection' to the graph
+
+  # first add two columns to the most left and right of the matrix
+  graph.new<- cbind(rep(0,size),graph,rep(0,size))
+  # then add two rows to the upperest and lowest of the matrix
+  graph.new<- rbind(rep(0,size+2),graph.new,rep(0,size+2))
+  # the point graph[i,j] is the same point as graph.new[i+1,j+1]
+  
+  # find out the neighbours of graph[i,j], i.e. graph.new[i+1,j+1]
+  neighbour<- c(graph.new[i,j+1],graph.new[i+2,j+1],graph.new[i+1,j],graph.new[i+1,j+2])
+ 
+  # to check whether we can flip the point or not
+  # consider two cases: (if '1' represents 'occupied', '0' represents 'not occupied')
+  
+  # 1. if the point selected is occupied (=1), then it can be surely flipped
+  # 2. if the point selected is not occupied(=0), then we have to check its neigbours
+  # and only when all its neighbours are not occupied (=0), it can be flipped
+  # so we only need to check whether the sum of the four neighbours is 0
+  
+   if (sum(neighbour)==0) {
+    graph[i,j]<- 1-graph[i,j]   # flip the point graph[i,j] and jump to the next state 
+    }
+   # if can't be flipped, stay at the current state 
+    
+  f.e[k]<- sum(graph==1)
+
+}  
+  
+  # return f.e,we know mean(f(e)) is an estimate for E(f(x))
+  return(f.e) 
+}
+
+
+# test my function and try different T's and find the reasonble value of T 
+
+# when T=1000
+mymh1<- MH.x(100,1000)
+plot(mymh1,ylab='f(e)',main='T=1000')
+
+################ insert picture1
+# no much noise
+
+# T=10000
+mymh2<- MH.x(100,10000)
+plot(mymh2,ylab='f(e)',main='T=10000')
+############## insert picture2
+# we can see that the graph begins to appear a little noisy
+
+
+# T=30000
+mymh3<- MH.x(100,30000)
+plot(mymh3,ylab='f(e)',main='T=30000')
+############# insert picture 3
+# we can see that the curve becomes a little bit noisy after T=10000
+
+# T=50000
+mymh3<- MH.x(100,50000)
+plot(mymh3,ylab='f(e)',main='T=50000')
+############# insert picture 4
+# we can see that the curve becomes pretty noisy 
+# thus I will choose T=50000
+
+
+################   some understandings of this problem #########################
+# each markov chain is actually a sample from P(x=e)
+# in each sample (MC), we get a list of configurations
+# and also their corresponding f(e)
+# then from the law of large numbers, we can estimate
+# E(f(x)) using mean(f(e)) 
+# run the markov chain for many times (in each time, we get a mean(f(e)))
+# we can form the sampling distribution
+# and also get confidence interval and other good statistical features we like
+################################################################################
+
+
+
+# and we want to estimate E(f(e)) using mean(f(e))
+# now form the histogram of f(e)/100^2
+# run the chain many times
+
+# suppose N=1000
+f.x<- c()
+for (i in 1:1000)
+{
+  f.x[i]<- mean(MH.x(100,50000))
+}
+f.x.frac<- f.x/(100^2)
+hist(f.x.frac,main='historgram of f(x)/100^2')
+
+############# insert picture 5
+# since I run 1000 times of markov chains, the histogram is pretty normal,
+# which follows the central limit theory
+
+
+
+## Part b
+
+# the null hypothesis is: e is drawn uniformly from the uniform distribution
+# however we don't know the exact uniform distribution of x
+# we can use our MC to estimate it
+# since the oberved value 0.4 is smaller than our estiamted mean of f(e)/100^2
+# we can compute the p value by finding the fraction of points  smaller than 0.4 
+# in vector f.x, which is almost 0
+# thus we reject the null hypothesis and conclude that the configuration
+# is not drawn from the allowable configurations
+
+
+## Part c
+
+#  the difference here is 
+#  in a, x is a random variable with distribution P(x=e)=1/|E|, thus, when we decide 
+#  whether to jump from state i to state j or stay at statei, the acceptance rate
+#  we use is  A=min(1,(1/|E|)/(1/|E|)), which is always equal to 1
+#  however in part c, since the distribution of Y are not unifrom
+#  the acceptance rate becomes A= min(1,f_y(ej)/f_y(e(i))), which may be less than
+#  or euqal to 1
+#  thus we have to add a step to decide whether to accept the proposal transity probability 
+#  or not
+
+
+MH.y=function(size,T)
+{
+  
+  # I chose the zero matrix as the intial state (configuration)
+  graph<- matrix(0,size,size)
+  
+  # f.e is a vector which stores the value f(e)(i.e. the number of occupied points in
+  # a configuration)  for each time step in this markov chain
+  fy.e<- c()
+  
+  # begin Markov chain
+  for (k in 1:T)
+  {  
+    # randomly select a point graph[i,j] from currect state 
+    i<-trunc(runif(1,1,size+1)) 
+    j<-trunc(runif(1,1,size+1))
+    
+    # to avoid the situation that the point we chose is on the boundary, we add a 
+    # 'protection' to the graph
+    
+    # first add two columns to the most left and right of the matrix
+    graph.new<- cbind(rep(0,size),graph,rep(0,size))
+    # then add two rows to the upperest and lowest of the matrix
+    graph.new<- rbind(rep(0,size+2),graph.new,rep(0,size+2))
+    # the point graph[i,j] is the same point as graph.new[i+1,j+1]
+    
+    # find out the neighbours
+    neighbour<- c(graph.new[i,j+1],graph.new[i+2,j+1],graph.new[i+1,j],graph.new[i+1,j+2])
+    
+    
+    # we may jump to the next state only when this condition holds
+    if (sum(neighbour)==0) {      
+      
+      # proposed next state is
+      graph.prop<- graph
+      graph.prop[i,j]<- 1-graph[i,j]
+      
+      # to check whether to accept the proposal transition or not
+      # we randomly select an uniform variable and to see whether 
+      # it's smaller than min(1,f_y(state.next)/f_y(state.current))
+      # if yes, we jump to the proposal state as the next state
+      # or else we stay at the current state
+      
+      # I first defind acceptance ratio in this way
+      ratio<- (sum(graph.prop==1)/sum(graph==1))^2  #alpha is cancelled out 
+      if (runif(1)< min(1,ratio))   
+      graph<- graph.prop
+      
+    }
+   
+    fy.e[k]<- (sum(graph==1))^2
+    
+  }  
+  
+  # return fy.e,we know mean(fy(e)) is an estimate for E(fy(e))
+  return(fy.e) 
+}
+
+
+# still test my function and try different T's to find the reasonble value of T from
+
+plot(MH.y(100,1000),ylab='f(e)^2',main='T=1000')
+######################## insert picture 6
+# no noise
+
+plot(MH.y(100,10000),ylab='f(e)^2',main='T=10000')
+######################## insert picture 7
+# noise begins to appear
+
+plot(MH.y(100,20000),ylab='f(e)^2',main='T=20000')
+######################## insert picture 8
+# a lot of noise, so I think T=20000 is enough
+
+
+
+# now draw the histogram of f(y)/100^2
+# since alpha is only a constant which has no effect on the distribution of y
+# we can draw the histogram of f(e)^2/100^2
+
+# suppose N=1000
+f.y<- c()
+for (i in 1:1000)
+{
+  f.y[i]<- mean(MH.y(100,20000))
+}
+f.y.frac<- f.y/(100^2)
+hist(f.y.frac,main='historgram of f(y/100^2')
+
+
+
+
+# Problem 3
+## Part a
+
+# insert written part a
+
+## Part b
+# insert written part b
+
+## Part c
+
+# in this problem, if we want to use the same idea as in the problem 2, i.e. to make 
+# our proposal transition matrix symmetric, we have to make sure the current state
+# and the next state can be flipped.
+
+# first, let's treat each w as a 'string' of size 200, and I divided each w into
+# 10 sections, the first one is from the begining to the 20th flip, the second
+# one is from the 21th to the 40th flip, and so on.
+
+# to test whether the currect can be flipped or not
+# we can pick two postions in this 'string'
+# if the two positions have different values (one is head and one is tail)
+# and if they are in the same section, we can change their position and get
+# a new state, which is also an allowble string.
+# however, if the two points we picked have the same value, changing their positions
+# won't make any difference. In this case, we should just stay at the current state.
+
+# also notice that since P(w|D) has a uniform distribution, and we are assuming 
+# symmetric transition matrix here, the acceptance rate is always 1.
+# thus, we can use the similar idea in part a in problem2 to write this algorithm
+
+# I treat each 200 flip of coins as a 'string'
+# suppose the function f(w) I am interested in is the number of heads in each string
+# I will use this function to find out the reasonable value of T
+
+# create an initial string
+# 1 represents head and -1 represents tail
+initial<-  rep(1,200)
+for (i in 1:10)
+{
+  a<- 1+20*(i-1)
+  b<- 20*i
+  initial[sample(a:b,9)] <- -1
+}
+
+
+
+MH.coin=function(initial,T)
+{
+  string<- initial
+  # here I made up a function of w: n, which represents the number of tails between the 35th
+  # coin flip to the 175th coin flip
+  n<- c()
+  # begin Markov chain
+  for (k in 1:T)
+  { 
+    
+    
+    # randomly select two positions i and j from currect state 
+    i<- trunc(runif(1,1,200+1))
+    j<- trunc(runif(1,1,200+1))
+    
+    
+    # to check whether we can flip the state or not
+    # first, check the value of two positions, if they are the same, stay at the currect state
+    # if they are different, check whether they are in the same section
+    # if they are, we can flip the state, and assign the new string as the next state
+    # if not, we stay at the current state
+    
+    
+    if (string[i]!= string[j])
+    { 
+      for ( t in 1:10)
+      {
+        if (1+20*(t-1)<min(i,j) & max(i,j)< 20*t) 
+          
+        {
+          string[i]<- -string[i]
+          string[j]<- -string[j]
+          
+        }
+      }
+    } 
+    n[k]<- sum(string[35:175]==-1)
+  }
+  
+  return(n)
+  
+}
+
+# to see how long I should run the MC, I test the MH on function n
+
+plot(MH.coin(initial,1000),ylab='n',main='T=1000')
+# insert picture 3.1
+# no noise 
+
+plot(MH.coin(initial,20000),ylab='n',main='T=20000')
+# insert picture 3.2
+# a bit more noisy
+
+plot(MH.coin(initial,30000),ylab='n',main='T=30000')
+# insert picture 3.3
+# relatively pretty noisy
+# thus I'd use T=30000
+
+
+## Part d
+
+initial<-  rep(1,200)
+for (i in 1:10)
+{
+  a<- 1+20*(i-1)
+  b<- 20*i
+  initial[sample(a:b,9)] <- -1
+}
+
+MH.w=function(initial,T)
+{
+  string<- initial
+  
+  # z is the maximimum amount of money we possess during any round of the 200 coin fips
+  z<- c()
+  
+  # t is a vector stores the first round at which we possess this maximum number
+  t<- c()
+  
+  # begin Markov chain
+  for (k in 1:T)
+  { 
+    
+    # temp.money stores the accumulative amount of money during each 200 flips
+    temp.money<- cumsum(string)
+    
+    z[k]<- max(temp.money)
+    t[k]<- which(temp.money==z[k])[1]
+    
+    # randomly select two positions i and j from currect state 
+    i<- trunc(runif(1,1,200+1))
+    j<- trunc(runif(1,1,200+1))
+    
+    
+    # to check whether we can flip the state or not
+    # first, check the value of two positions, if they are the same, stay at the currect state
+    # if they are different, check whether they are in the same section
+    # if they are, we can flip the state, and assign the new string as the next state
+    # if not, we stay at the current state
+    
+    
+    if (string[i]!= string[j])
+    { 
+      for ( s in 1:10)
+      {
+        if (1+20*(s-1)<min(i,j) & max(i,j)< 20*s) 
+          
+        {
+          string[i]<- -string[i]
+          string[j]<- -string[j]
+          
+        }
+      }
+    } 
+  }
+  
+  
+  # z is actually a random variable, each mc can be regarded as a sample of z
+  # we can use mean(z) to estimate E(z) according to LLN
+  # similarly, we can use mean(t) to estimate E(t)
+  e.z<- mean(z)
+  e.t<- mean(t)
+  
+  return(list(z=e.z,t=e.t))
+  
+}
+
+z<- c()
+t<- c()
+for (i in 1:1000)
+{
+  z[i]<- MH.w(initial,20000)$z
+  t[i]<- MH.w(initial,20000)$t
+}
+hist(z,main='histogram for z')
+hist(t,main='histogram for t')
