@@ -1,0 +1,237 @@
+# problem 2
+###############################################################################
+# part a
+# set p1= 0.7, p2=0.3, mu1=0,mu2=3, s^2=1, s^2=4
+# the combined pdf for X is p1*f1(x)+p2*f2(x)
+mu1<- 0
+mu2<- 3
+s1<- 1
+s2<- 2
+p<- 0.7
+n<- 100
+
+gussianmix=function(n,mu1,mu2, s1,s2,p)
+{
+  set.seed(123)
+  r<- runif(n,0,1)
+  I<- r<p         # I is an indicator vector
+  sampler<- rnorm(n,mean=ifelse(I,mu1,mu2),sd=ifelse(I,s1,s2))
+  return(sampler) 
+}
+
+sampler<- gussianmix(n,mu1,mu2,s1,s2,p1)
+hist(sampler, prob=TRUE,main='Density Estimate of the Mixture Model')
+curve(dnorm(x, mean=mean(sampler), sd=sd(sampler)), add=TRUE,col='blue')
+ 
+# from above graph, we can see that the density line is a little different from the histogram, I 
+# think it’s due to the sample size is small
+# So let’s plot the true density as a sanity check
+
+x = seq(-5,10,.1)
+truth = .7*dnorm(x,mu1,sigma1) + .3*dnorm(x,mu2,sigma2)
+
+# compare my gaussianmix sampler with truth
+
+plot(density(sampler),main="Density Estimate of the Mixture Model",ylim=c(0,0.3),lwd=1)
+lines(x,truth,col="red",lwd=1)
+legend("topright",c("True Density","Estimated Density"),col=c("red","black"),lwd=1)
+ 
+
+# as we can see, the estimated pdf is very close to true density. As the sampler size gets larger, I 
+# think they will be more closer, so I make n=1000 and 10000, and found that the two graphs are 
+# almost the same 
+# when n=1000
+ 
+
+
+
+
+
+
+
+# when n=10000
+
+ 
+
+
+
+
+
+
+###############################################################################
+# part b
+## steepest descent method on test function f(x1,x2)=-((10-x1)^2) - ((5-x2)^2)
+f.test=function(x)
+{
+  -((10-x[1])^2) - ((5-x[2])^2)
+}
+
+# test:
+f.test(c(10,5))
+
+# the gradient of the function is
+grad.test=function(x)
+{
+ c(2*(10-x[1]),2*(5-x[2]))
+}
+# test
+grad.test(c(10,5))
+
+# to compute the norm of a vector
+norm=function(x)
+{
+  sqrt(sum(x^2))
+}
+
+# test
+norm(grad.test(c(10,5)))
+
+# a function to choose alpha
+alpha=function(x)
+{ i<- 1
+  a=1
+  while (f.test(x+a*grad.test(x)/norm(grad.test(x)))<f.test(x))
+  {
+    a<- a/2
+    i<- i+1
+    print(i)
+  }
+  return(a)
+}
+
+# steepest descent
+steepest=function(x0,e)
+{
+  alpha=1
+  d<- grad.test(x0)/norm(grad.test(x0))
+  x<- x0+d*alpha(x0)
+
+  while (abs(f.test(x))>e)
+  {
+    d<- grad.test(x)/norm(grad.test(x))
+    x<- x+d*alpha(x)
+  }
+  maxvalue<- f.test(x)
+  return(list(max.point=x,max.value=maxvalue))
+  
+}
+
+# test
+x<- c(0,0)
+e<- 10^-4
+steepest(x,e)
+# the answer is 
+# $max.point
+# [1] 10.006404  5.003202
+# $max.value
+# [1] -5.126721e-05
+  
+
+
+
+# Now to find the MLE for the guassian mixturen model function, and it's gradient
+
+# suppose v is of vector, v=(p1,p2,mu1,mu2,s1^2,s2^2)
+# the log likelihood function of gaussian mix model is:
+
+loglikelihood=function(v)
+{
+  temp<- sum(log(v[1]*dnorm(x,v[3],sqrt(v[5]))+v[2]*dnorm(x,v[4],sqrt(v[6]))))
+  return(temp)
+}
+
+
+# test
+x<- sampler
+p1<- 0.7
+p2<- 0.3
+v0<- c(p1,p2,mu1,mu2,s1^2,s2^2)
+loglikelihood(v0)
+# the answer is [1] -193.3897
+
+# my gradient function for guassian mix model
+gmm.grad=function(v)
+{
+  p1<- v[1]
+  p2<- v[2]
+  mu1<- v[3]
+  mu2<- v[4]
+  sigma1<- sqrt(v[5])
+  sigma2<- sqrt(v[6])
+  # Q is the denomitor in all the derivatives
+  Q<- p1*dnorm(x,mu1,sigma1)+p2*dnorm(x,mu2,sigma2)
+  dp1<- sum(dnorm(x,mu1,sigma1)/Q)
+  dp2<- sum(dnorm(x,mu2,sigma2)/Q)
+  dmu1<- sum(p1*dnorm(x,mu1,sigma1)*(x-mu1)/(sigma1^2)/Q)
+  dmu2<- sum(p1*dnorm(x,mu1,sigma1)*(x-mu1)/(sigma1^2)/Q)
+  ds1<- sum(p1*(-1/(2*sigma1^2)+(x-mu1)^2/(2*sigma1^4))*dnorm(x,mu1,sigma1)/Q)
+  ds2<- sum(p2*(-1/(2*sigma2^2)+(x-mu2)^2/(2*sigma2^4))*dnorm(x,mu2,sigma2)/Q)
+  return(c(dp1,dp2,dmu1,dmu2,ds1,ds2)) 
+  
+}
+
+# test
+gmm.grad(v0)
+# [1] 100.8922763  97.9180220  -4.2855391  -4.2855391  -0.6912413  -0.1169525
+
+# use numDeriv to check the whether my gradient function is correct
+library(numDeriv)
+require(numDeriv)
+grad(loglikelihood,x=v0)
+# [1] 100.8922763  97.9180220  -4.2855391  -0.2702247  -0.6912413  -0.1169525
+# Yeah, it's the same with my gradient function, so my gradient function should be correct
+
+
+
+# Now let's come to the finding maximum part using steepest descent
+norm=function(v)
+{
+  sqrt(sum(v^2))
+}
+
+# test
+norm(gmm.grad(v0))
+# [1] 140.7282
+
+# a function to choose alpha
+alpha=function(v)
+{ i<- 1
+  a=1
+  while (loglikelihood(v+a*gmm.grad(v)/norm(gmm.grad(v)))<loglikelihood(v))
+  {
+    a<- a/2
+    i<- i+1
+    print(i)
+  }
+  return(a)
+}
+
+# steepest descent
+steepest=function(v0,e)
+{
+  alpha=1
+  d<- gmm.grad(v0)/norm(gmm.grad(v0))
+  v<- v0+d*alpha(v0)
+  
+  while (abs(loglikelihood(v))>e)
+  {
+    d<- gmm.grad(v)/norm(gmm.grad(v))
+    v<- v+d*alpha(v)
+  }
+  maxvalue<- loglikelihood(v)
+  return(list(max.point=v,max.value=maxvalue))
+  
+}
+
+# test
+e<- 10^-3
+steepest(v0,e)
+
+# it takes sooooo long to run the steepest descent, so I changed e to 0.01 to run it again
+
+e<- 0.01
+steepest(v0,e)
+
+# it doesn't make much difference, My computer runs all night and I still did not get
+# a good answer...But I have tried my steepest descent on many other functions, and it 
+# works well and fast..
