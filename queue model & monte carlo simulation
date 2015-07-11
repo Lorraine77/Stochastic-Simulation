@@ -1,0 +1,218 @@
+##############  611 HW1  Jinhui_Wang (jw1395)  ############################
+
+####################### Question #2
+
+
+# Q(t): # of people in line at time t
+# wi: waiting time of the ith person
+# Ai: arrival time of the ith person
+# Di: departure time of the ith person
+# Two random variables: Ti and Si
+# Ti: interarrival time of the ith person and the (i-1)th person
+# Si: service time of the ith person
+
+# Ai= A(i-1) + Ti
+# Di= Ai + Wi + Si
+# Q(0)=0 W1=0
+
+#################################################
+# 1st person
+# A1=T1
+# D1=A1+W1+S1
+
+# 2nd person
+# A2=A1+T2=T1+T2
+# W2=max(0,D1-A2)
+# D2=A2+W2+S2
+
+# 3rd person
+# A3=A2+T3=T1+T2+T3
+# W3=max(0,D2-A3)
+# D3=A3+W3+S3
+
+# 100th person
+# A100=A99+T100=sum(T1,T2,...,T100)
+# W100=max(0,D99-A100)
+# D100=A100+W100+S100
+####################################################
+
+
+#######part c
+
+# I wrote two functions, the first function is Q(mu,lambda,m),which returns
+# the waiting time of the nth person in the queue
+
+# lambda is the parameter for T, mu is the parameter for S
+# m is the order of the person in the queue whose waiting time is to be estiamated
+
+Q=function(mu,lambda,m)
+{
+  w<-0 
+  # A1=T1, T1=rexp(1,lambda)
+  a <- rexp(1,lambda)
+  d <- a+w+rexp(1,mu) 
+  
+  for (i in 2:100)
+  { 
+    a<- a+rexp(1,lambda)
+    w<- max(0,d-a)
+    d<- a+w+rexp(1,mu)
+    
+    # w_spec is the value for the mth person's waiting time
+    if (i==m) {w_spec<- w}  
+  }
+  
+  return(w_spec)
+  
+}
+
+
+
+# the second is the simulation function, which simulates the monte carlo process
+# for n tiems
+
+simu=function(n) 
+  
+{
+  
+  # w_rv is a vector to store the values of w_spec, which can be seen as a sample 
+  # of random variable w_spec
+  w_rv <- c()
+  
+  for (k in 1:n)
+  {
+    w_rv[k]<-  Q(mu,lambda,m)
+  }
+  
+  
+  # z is a new random variable, z= 1 if w_rv==0, z=0 otherwise
+  # m_hat is the sample mean of z
+  # sd is the standard sample variance of z
+  # the confidence interval is computed as CI=[z_hat-1.96*s/sqrt(n),z_hat+1.96*s/sqrt(n)]
+  
+  z<- c()
+  z[w_rv>0]<- 0
+  z[w_rv==0]<- 1
+  m_hat<- sum(z)/n
+  sd <- sqrt(sum((z-m_hat)^2)/(n-1))
+  CI <- c(m_hat-1.96*sd/sqrt(n),m_hat+1.96*sd/sqrt(n))
+  
+  # return a list, E is the expected value of z, CI is the confidence interval
+  # W is the vector stores n time different values of w_spec
+  return(list(E=m_hat,CI=CI,W=w_rv))
+  
+}
+
+
+
+############ part d
+lambda<- 0.9
+mu<- 1
+
+# when m=2, i.e., to estimate the second person's waiting time
+m<- 2
+# run the simulations for 100,1000 and 10000 tiems to see difference
+
+pw2_100 <- simu(100)
+E2_100 <- pw2_100$E
+CI2_100 <- pw2_100$CI
+
+
+pw2_1000 <- simu(1000)
+E2_1000 <- pw2_1000$E
+CI2_1000 <- pw2_1000$CI
+
+
+pw2_10000 <- simu(10000)
+E2_10000 <- pw2_10000$E
+CI2_10000 <- pw2_10000$CI
+
+# E2_true is the true value of m_hat computed in part a
+E2_true<- mu/(mu+lambda)
+#[1] 0.5263158
+
+# E2_compare is a dataframe which stores three values of E(i.e.m_hat)
+# corresponding to 100, 1000 and 10000 times of simulation
+E2_compare<- data.frame(E2_100,E2_1000,E2_10000)
+
+#   E2_100 E2_1000 E2_10000
+# 1   0.44   0.512   0.5232
+# as we can see, when n=10000, the result of simulation is closest to the true value
+
+# CI2_compare is a dataframe which stores three CI corresponding to n=100,1000 and 10000
+# the first row is the left hand side value of the CI, and the second row is the right 
+# hand side value of CI
+CI2_compare<- data.frame(CI2_100,CI2_1000,CI2_10000,row.names=c('left side','right side'))
+
+#             CI2_100  CI2_1000 CI2_10000
+# left side  0.342218 0.4810031 0.5134101
+# right side 0.537782 0.5429969 0.5329899
+# as we can see, all the E values are in the corresponding confidence intervals
+
+
+# when m=100, i.e., to estimate the 100th person's waiting time
+pw100_100 <- simu(100)
+E100_100 <- pw100_100$E
+CI100_100 <- pw100_100$CI
+
+
+pw100_1000 <- simu(1000)
+E100_1000 <- pw100_1000$E
+CI100_1000 <- pw100_1000$CI
+
+
+pw100_10000 <- simu(10000)
+E100_10000 <- pw100_10000$E
+CI100_10000 <- pw100_10000$CI
+
+
+E100_compare<- data.frame(E100_100,E100_1000,E100_10000)
+
+#  E100_100 E100_1000 E100_10000
+#1     0.57     0.561     0.5254
+
+
+CI100_compare<- data.frame(CI100_100,CI100_1000,CI100_10000,row.names=c('left side','right side'))
+
+
+#           CI100_100 CI100_1000 CI100_10000
+#left side  0.4724763  0.5302258   0.5156122
+#right side 0.6675237  0.5917742   0.5351878
+# as we can see, all the E values are in the corresponding confidence intervals
+
+
+
+
+######## part e
+
+par(mfrow=c(3,2))
+hist(pw100_100$W,main='n=100')
+qqnorm(pw100_100$W,main='n=100')
+qqline(pw100_100$W,main='n=100')
+
+hist(pw100_1000$W,main='n=1000')
+qqnorm(pw100_1000$W,main='n=1000')
+qqline(pw100_1000$W,main='n=1000')
+
+hist(pw100_10000$W,main='n=10000')
+qqnorm(pw100_10000$W,main='n=10000')
+qqline(pw100_1000$W,main='n=10000')
+
+# the graph of histogram and qqnorm of W100 when n=100, 1000, and 10000 are as follow
+
+
+######## part f
+
+M<- c()
+for (t in 1:10000)
+{
+  M[t]<- simu(1000)$E
+  print(t)
+}
+
+par(mfrow=c(1,2))
+hist(M,main='histogram for m')
+qqnorm(M,main='qqnorm for m')
+qqline(M)
+
+# the graph of histogram and qqnorm of m is as follow
