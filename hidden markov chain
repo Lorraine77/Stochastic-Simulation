@@ -1,0 +1,406 @@
+### Problem 2
+
+## part a
+# suppose T(k) is the time when the kth jump happens
+# we know that the inter arrival time T(k)-T(k-1) follows exponential distribution 
+# with parameter lambda(k), for homohegous poisson process, lambda(k) is a constant
+
+
+# the function to sample the first n jumps is:
+poi.Njump=function(n,r)
+{
+  # suppose the starting time is 0
+  t<- 0
+  k<- 1
+  # suppose time is a vector stores the time when each jump happens
+  time<- c()
+  
+  while (k<n)
+  {
+    # we can use cdf-inverse method to sample from exponential distribution
+    u<- runif(1,0,1)
+    t<- t-log(u)/r
+    time[k]<- t
+    k<- k+1
+   
+  }
+  return(time)
+}  
+
+
+
+
+## part b
+
+# function of jump rate r
+r=function(t)
+{
+a<- 5*10^(-4)
+b<- 7.5858*10^(-5)
+c<- log(1.09144)
+return(a+b*exp(c*t))
+}
+
+
+poi.process=function(starttime,endtime)
+{
+
+  # since r=a+b*e^(ct) is an increasing function regarding to t
+  # so the maximum of r(t) is when t=100
+  r.max<- r(100)
+  t<- starttime
+  k<- 1
+  time<- c()
+  while (t< endtime)
+{
+  u1<- runif(1,0,1)
+  t<- t-log(u1)/r.max
+  if (t>endtime) break
+  u2<- runif(1,0,1)
+  # accept if
+  if (u2<=r(t)/r.max)
+  {
+  time[k]<- t
+  k<- k+1
+
+  }
+     }
+  
+  return(list(process=time,Njumps=length(time)))
+  
+}
+
+
+
+## hand written part
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## part d
+
+## (i) use the formula I derived in part c
+# the probability that a person aged 60 will live to 90 is 
+# P(T1>90)=1-F(90)
+temp<- integrate(r,60,90)$value
+prob<- exp(-temp)
+# 0.118825
+# thus the probability is 11.88% 
+
+
+## (ii)
+# the idea of monte carlo integration method is to run the monte carlo for a lot of
+# times and count the frequencies that the evert happens, which is approximately the 
+# probability of the event
+
+# suppose N is the # of times that I run monte carlo 
+# a 60 year old can live to 90 means that there's no jump between 60 and 90
+# we should count the frequency of poi.process(60,90)$Njumps==0
+
+mc.integ<- sapply(1:N,function(x) poi.process(60,90)$Njumps)
+prob<- sum(mc.integ==0)/N
+# 0.1183
+# thus there is about 11.83% chance that a person who is 60 years old will live
+# to be 90
+
+
+
+### Problem 3
+## part a
+
+# X(t) is a markov chain
+sampler.x=function(n)
+{
+  alpha<- 0.02
+  p<- matrix(c(1-alpha,alpha,alpha,1-alpha),nrow=2)
+  
+  # path stores the  state along the chain, from 0 to n
+  path<- c()
+  
+  # let 1 represents 'fair' and 2 represents 'cheating'
+  # the state at time 0 is fair
+  path[1]<- 1
+  
+  for (i in 2:n)
+  {
+    path[i]<- sample(c(1,2),1,prob=p[path[i-1],]) 
+    
+  }
+ return(path) 
+}
+
+# sampler of Y(t)
+sampler.y=function(path)
+{
+  y<- c()
+  n<- length(path)
+  for (i in 1:n) 
+  {
+    y[i]<- ifelse(path[i]==1,sample(1:6,1,prob=rep(1/6,6)),sample(1:6,1,prob=c(rep(3/16,5),1/16)))
+  }
+return(y)
+}
+
+
+
+## part b
+
+# realization of X(t)
+x.data<- sampler.x(10^3)
+
+# realization of y(t)
+# for any given sequence of {F,C}
+seq<- sapply(1:10^3, function(x) sample(c(1,2),1,))
+y.data<- sampler.y(seq)
+
+## hand written part
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## part c
+# The state space of Z consists of all the sequences made of  'Fair' and 'Cheating',
+# i.e. each state is in the form of FFFFCCCCCCCCCFFFFFFFCCCFFFFF...
+
+
+
+## part d
+# in this problem, we want to sample from z, whose stationary distribution is nu
+# to make the proposal symmetric: at each state, we only change the value of one 
+# position. For example, if current state is FFCC, and the position we randomly
+# chose is 3, then the next state is FFFC. 
+
+
+# prob.mc is a function compuates the probability along a markov chain
+# i.e. prob.mc= P(s0s1)*P(s2s2)...*P(sn-1sn)
+prob.mc=function(state)
+{
+  n<- length(state)
+  prob<- c()
+  for (i in 1:n-1)
+  {
+    prob[i]<- ifelse(state[i+1]==state[i],0.98,0.02)
+  }
+  return(log(prob))    # the reason why I returned log is explained later 
+}
+
+# prob.die is a funtion returns the probability of observed die values for a given
+# markov chain
+# i.e. prob.die=G_s0(y0)*G_s1(y1)...*G_sn(yn)
+prob.die=function(state,die)
+{
+prob<- c()
+for (i in 1:length(state))
+{
+if (state[i]==1) prob[i]<- 1/6
+if (state[i]==2 & die[i]==6) prob[i]<- 1/16
+if (state[i]==2 & die[i]!=6) prob[i]<- 3/16  
+}
+return(log(prob))
+}
+
+
+# MH.casino is the metropilis hasting algorithm, takes initialstate, endtime and die
+# as input, where die is the observed values of y
+
+MH.casino=function(initialstate,endtime,die)
+{
+  n<- length(initialstate)
+  state.current<- initialstate
+  
+  # I made a vector here to decide the optimal endtime for markov chain
+  # suppose f= the number of '1'(fair) in each state
+  f<- c()
+  
+  # begin Markov chain
+  for (k in 1:endtime)
+  { 
+    
+    # proposal for next stage
+    # for randomly select a position
+    i<- sample(1:n,1)
+    state.next<- state.current
+    state.next[i]<- ifelse(state.current[i]==1,2,1)
+    
+    # now we need to check whether 
+    # u<min(1,c), where c= (nu(w*)*q(w*,w))/(nu(w)*q(w,w*))
+    # suppose nu(w*) is the proposal state, nu(w) is the current state
+    # since q(w*,w)=q(w,w*), which reduced c to be nu(w*)/nu(w)
+    
+    # suppose 
+    # nu.next<- prod(prob.mc(state.next))*prod(prob.die(state.next,die))
+    # nu.current<- prod(prob.mc(state.current))*prod(prob.die(state.current,die))
+    # I first try to compute c= nu.next/nu.current directly but found that 
+    # c is very unstable since nu.next and nu.current can easily be 0 when n is large
+    # so I change them into log form and instead compute c=exp(log(nu.next)-log(nu.current))
+   
+    nu.next.log<- sum(prob.mc(state.next))+sum(prob.die(state.next,die))
+    nu.current.log<- sum(prob.mc(state.current))+sum(prob.die(state.current,die))
+    c<- exp(nu.next.log-nu.current.log)
+    
+    
+    if (runif(1)< min(1,c)) {
+     state.current<- state.next
+    }
+    
+    f[k]<- sum(state.current==1)
+  }
+  
+  return(list(Nfair=f,state=state.current))
+  
+}
+
+
+# first try different values of T to determine the optimal T
+
+# T=3000
+initialstate<- sampler.x(3000)
+die<- sampler.y(initialstate)
+plot(MH.casino(initialstate,3000,die)$Nfair,main='T=3000')
+
+ 
+
+#T=5000
+initialstate<- sampler.x(5000)
+die<- sampler.y(initialstate)
+plot(MH.casino(initialstate,5000,die)$Nfair,main='T=5000')
+ 
+
+
+
+
+
+# T=10000
+initialstate<- sampler.x(3000)
+die<- sampler.y(initialstate)
+plot(MH.casino(initialstate,3000,die)$Nfair,main='T=10000')
+ 
+
+# I decide to use T=10000
+
+
+# the function to compute P(x(t)=c|data)
+prob.C=function(t)
+{
+  temp<- c()
+  for (i in 1:100)
+  {
+    initialstate<- sapply(1:10000, function(x) sample(1:2,1))
+    die<- sapply(1:50000, function(x) sample(1:6,1))
+    temp[i]<- MH.casino(initialstate,10000,die)$state[t]
+  }
+  prob<- sum(temp==2)/100
+}
+
+# the final answer I got is 0.5204
+# the actual one should be 0.50
+
+# the function to compute P(x(t)=c|data)
+prob.C=function(t)
+{
+  temp<- c()
+  for (i in 1:100)
+  {
+    initialstate<- sapply(1:50000, function(x) sample(1:2,1))
+    die<- sapply(1:50000, function(x) sample(1:6,1))
+    temp[i]<- MH.casino(initialstate,50000,die)$state[t]
+  }
+  prob<- sum(temp==2)/100
+}
+
+# the final answer I got is 0.5204
+
+
+##  Problem 4
+# I am still working on it , I will add this part on HW9
