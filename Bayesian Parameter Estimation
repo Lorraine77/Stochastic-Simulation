@@ -1,0 +1,288 @@
+### Problem 2
+## part b
+
+# Generate 100 samples from X
+
+set.seed(123)
+sample.x=function(pi,n)
+{ 
+  sample<- c()
+  for (i in 1:n)
+  {
+    sample[i]<- ifelse(runif(1)<pi,rnorm(1,1,1),rnorm(1,3,1.5))
+  }
+  return(sample)
+}
+x<- sample.x(0.3,100)
+
+
+## another way to sample from x
+# x<- ifelse(runif(100)<0.3,rnorm(100,1,1),rnorm(100,3,1.5))
+
+
+## part c
+
+# the likelihood function takes a single value of pi as input
+# and returns the mle corresponding to that pi
+likeli= function(pi)
+{
+  prod(pi*dnorm(x,1,1)+(1-pi)*dnorm(x,3,1.5))
+  
+}
+
+pi=matrix(seq(0,1,length=100),nrow=1)
+# apply the likelihood matrix to each value of pi
+likelihood<- apply(pi,2,likeli)
+plot(pi,likelihood,main="MLE for pi in [0,1]")
+######### insert 2.1
+
+# to locate the MLE of pi
+pi[which(likelihood==max(likelihood))]
+# the MLE is around 0.2222222
+
+
+
+## part d
+
+
+# the prior function of pi is g(pi), the posterior function is P(pi|data)
+# the likelihood function is P(data|pi)
+# P(pi|data)=P(data|pi)*g(pi)/P(data)
+# where P(data)=integrate(P(data|pi)*g(pi)) on interval [0,1]
+
+g.1=function(pi)
+{
+  1
+}
+
+integrant.1=function(pi)
+{
+  likeli(pi)*g.1(pi)
+}
+
+# vectorize integrant
+integrant.1<- Vectorize(integrant.1,'pi')
+
+# probability of data is
+prob.data.1<- integrate(integrant.1,0,1)
+
+# now compute the posterior of pi
+g1<- apply(pi,2,g.1)
+post1<- likelihood*g1/prob.data.1$value
+plot(pi,post1,main="posterior of pi when g(pi)=1")
+
+# to locate the max of poterior
+pi[which(post1==max(post1))]
+# the value is around  0.2222222
+# the max of pi doesn't change because the posterior is only multiplied
+# by a constant number, so the maximum point is the same with c)
+
+
+## part e
+
+# when g(pi) changes, the prob.data changes, so the posterior changes
+# the likelihood function stays the same
+
+# when g(x)=6*x^5
+g.2=function(pi)
+{
+  6*pi^5
+}
+
+integrant.2=function(pi)
+{
+  likeli(pi)*g.2(pi)
+}
+
+# vectorize integrant
+integrant.2<- Vectorize(integrant.2,'pi')
+
+# probability of data is
+prob.data.2<- integrate(integrant.2,0,1)
+
+# now compute the posterior of pi
+g2<- apply(pi,2,g.2)
+post2<- likelihood*g2/prob.data.2$value
+plot(pi,post2,main="posterior of pi when g(pi)=6x^5")
+
+# to locate the max of poterior
+pi[which(post2==max(post2))]
+# the value is around 0.3030303, it is larger than 0.22222 in part c and d
+# the posterior changes since g(pi) changes, which also leads to the
+# change of probability of data  
+
+
+# when g(x)= 6*(1-x)^5
+g.3=function(pi)
+{
+  6*(1-pi)^5
+}
+
+integrant.3=function(pi)
+{
+  likeli(pi)*g.3(pi)
+}
+
+# vectorize integrant
+integrant.3<- Vectorize(integrant.3,'pi')
+
+# probability of data is
+prob.data.3<- integrate(integrant.3,0,1)
+
+# now compute the posterior of pi
+g3<- apply(pi,2,g.3)
+post3<- likelihood*g3/prob.data.3$value
+plot(pi,post3,main="posterior of pi when g(pi)=6(1-x)^5")
+
+# to locate the max of poterior
+pi[which(post3==max(post3))]
+# the value is around  0.1919192, it is smaller than 0.222222 in part c and d
+# the posterior changes since g(pi) changes, which also leads to the
+# change of probability of data 
+
+
+# Problem 3
+or<- read.table('C:/Users/Administrator/Desktop/o_ring_data.txt',header=T)
+
+r<- or$Failure
+t<- or$Temp
+
+
+## part a
+
+
+
+## part b
+
+# the loglikelihood function of the logistic model is:
+or.L= function(theta){
+  alpha=theta[1]
+  beta=theta[2]
+  l= r*exp(alpha+beta*t)/(1+exp(alpha+beta*t))+(1-r)/(1+exp(alpha+beta*t))
+  L=sum(log(l))
+  return(L)
+}
+
+# to maximize the loglikelihood, is to minimize -loglikelihood
+or.L.neg=function(theta){
+  alpha=theta[1]
+  beta=theta[2]
+  l= r*(alpha+beta*t)-log(1+exp(alpha+beta*t))
+  L=sum(l)
+  return(-L)
+}
+
+
+theta<- c(0.02,0.01)
+nlm(or.L.neg,theta)
+#$minimum
+#[1] 10.1576
+
+#$estimate
+#[1] 15.047603 -0.232232
+
+#$gradient
+#[1] -5.784409e-09 -2.415845e-07
+
+#$code
+#[1] 1
+
+#$iterations
+#[1] 23
+
+
+
+## part c
+
+
+# from part b, we know that optimal alpha is around 15, optimal beta is around -0.2
+mle.1<- 15.047603
+mle.2<- -0.232232
+
+# choose the prior for alpha and beta
+# let g1 be the prior for alpha, g2 for beta
+g1=function(x) {dnorm(x,mle.1,0.1)}
+g2=function(x) {dnorm(x,mle.2,0.1)}
+# I tried different values of variance of g1 and g2, var=1 would lead to 
+# too many rejections, var=0.01 is would limit the range of proposal alpha and beta
+# var=0.1 is the optimal choice
+
+MH.or=function(theta,T)
+{
+
+  alpha<- theta[1]
+  beta<- theta[2]
+  
+  # I made a vector here to decide the optimal T for markov chain
+  # n is the vector stores the value of alpha in each time
+  n<- c()
+  # begin Markov chain
+  for (k in 1:T)
+  { 
+    
+  # proposal for next stage
+  alpha.next<- alpha+rnorm(1,0,0.01)
+  beta.next<- beta+rnorm(1,0,0.01)
+  theta.next<- c(alpha.next,beta.next)
+  # I chose the variance of normal distribution 0.01 because it has the least
+  # number of rejections (I've tried many values for this variance)
+  
+  
+  # now we need to check whether 
+  # u<min(1,c), where
+  # c=f(theta*)/f(theta)  (f is the stat dist)
+  #  =L(theta.next)*g1(alpha.next)*g2(alpha.next)/(L(theta)*g1(alpha)*g2(alpha))
+  # L is the likelihood function
+
+   
+  temp1<- exp(or.L(theta.next))*g1(alpha.next)*g2(beta.next)
+  temp2<- exp(or.L(theta))*g1(alpha)*g2(beta)
+  c<- temp1/temp2
+
+  
+  if (runif(1)< min(1,c)) {
+  alpha<- alpha.next
+  beta<- beta.next
+  theta<- theta.next
+  }
+  
+  n[k]<- alpha
+  }
+   
+   return(list(alpha=n,theta=theta))
+  
+}
+
+theta<- c(13,0)
+
+# try different values of T to find the best one
+plot(MH.or(theta,1000)$alpha,main='T=1000')
+plot(MH.or(theta,3000)$alpha,main='T=3000')
+plot(MH.or(theta,5000)$alpha,main='T=5000')
+# we can see that when T=5000, the graph is pretty noisy, so T=5000 is enough
+
+# when T=5000, the optimal theta is
+opt.theta<- MH.or(theta,5000)$theta
+# 15.0402439 -0.2342275
+# which is very close to the mle we found in part b
+
+## part d
+
+T65=c()
+T45=c()
+for (i in 1:10000){
+  alpha<-  MH.or(theta,5000)$theta[1]
+  beta<-  MH.or(theta,5000)$theta[2]
+  T65[i] <- exp(alpha+beta*65)/(1+exp(alpha+beta*65))
+  T45[i] <- exp(alpha+beta*45)/(1+exp(alpha+beta*45))
+}
+hist(T65,breaks=100,main='Temperature=65')
+hist(T45,breaks=100,xlim=c(0.965,1),main='Temperature=45')
+
+# when we use the mle of alpha and beta
+p.t65<- exp(mle.1+mle.2*65)/(1+exp(mle.1+mle.2*65))
+# 0.488133
+p.t45<- exp(mle.1+mle.2*45)/(1+exp(mle.1+mle.2*45))
+# 0.9900202
+# we can see that the these two values are around the mean of the distribution
+# plot of T65 and T45
