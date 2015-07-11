@@ -1,0 +1,437 @@
+## problem 2
+# part a
+
+# we can write a function to sample Y first, then use equation X=QY to sample X
+
+# let x.sigma be the covariance matrix of X
+# x.sigma=QDt(Q), and D is a diagonal matrix whose elements along the diagonal
+# are eigen values of x.sigma, and Q is consisting of eigen vectors of x.sigma
+# we can use svd function to find Q and D
+
+x.sigma<- matrix(c(2,1,1,10),2,2)
+D<- diag(svd(x.sigma)$d,2,2)
+Q<- svd(x.sigma)$u
+
+# thus,the variance of y1 and y2 are y1.var=D[1,1] and y2.var=D[2,2]
+y1.var<- D[1,1]
+y2.var<- D[2,2]
+
+# Y =(Y1,Y2), where Y1~N(0,y1.var),Y2~N(0,y2.var)
+
+x.sampler=function(y1.var,y2.var,n)
+{ 
+  y1.s<- sqrt(y1.var)
+  y2.s<- sqrt(y2.var)
+  y1<- rnorm(n,0,y1.s)
+  y2<- rnorm(n,0,y2.s)
+  Y<- rbind(y1,y2)
+  X<- Q%*%Y
+  return(X)
+  
+}
+
+set.seed(123)
+n<- 10000
+mysample<- x.sampler(y1.var,y2.var,n)
+
+
+# to test whether my x.sampler is correct 
+library(MASS)
+mu<- c(0,0)
+Sigma<- x.sigma
+test<- mvrnorm(n, mu=mu, Sigma=Sigma)
+
+plot(density(mysample[1,]),main='my sampler for x1')
+lines(density(test[,1]),col='red')
+# insert picture 1
+
+plot(density(mysample[2,]),main='my sampler for x2')
+lines(density(test[,2]),col='red')
+#insert picture 2
+
+# as we can see from the comparision of my sampler and r-inside multivariate sampler,
+# the mean and variance are almost the same!
+# which means my x sampler is correct
+
+
+# part b
+##(i)
+# the joint pdf of x1 and x2 is:
+# suppose mu and sigma are the mean and covariance matrix of X
+pdf=function(x,sigma)
+{
+exp(-t(x)%*%solve(sigma)%*%x/2)/(2*pi*sqrt(det(sigma)))
+}
+
+x.hat<- c(5,-20)
+p.hat<- pdf(x.hat,x.sigma)
+# 1.889908e-16
+
+# to test whether the result is the same from R inside multivariate normal distribution pdf
+dmvnorm(x.star,mean=c(0,0),sigma=x.sigma)
+# 1.889908e-16
+# they are the same
+
+# Why is the region E a good choice for building a p value?
+# the reason is: under the null hypethesis that x.hat is drawn from X,
+# the probability of x.hat should be no smaller than alpha(which is the significance level)
+# however, if the probability of x.hat and more extreme cases are smaller than alpha,
+# it means that they are event with so small probability and are not supposed to happen
+# which further implies that our hypothesis is wrong, so we rejuct null hypothesis
+# In this probabilty, since P(x.hat)=1.889908e-16 is very small, it's highly likely
+# that our null hypothesis is wrong, so find the probability of region E is a good choice
+
+##(ii)
+# to compute the p value
+p.value=function(p.hat){
+  sample= mysample
+  k<- 0
+  i<- 1
+  while(i<n){
+    pdf.new= pdf(sample[,i],x.sigma)
+    if(pdf.new< as.numeric(p.hat)){
+      k=k+1
+    }
+    else{
+      k=k
+    }
+    i=i+1
+    # print(i)
+  }
+  p.value=k/n
+  return(p.value)
+}
+# p.value(p.hat)
+# [1] 0
+# since the answer is 0 which is far smaller than 0.05, we should reject the 
+# null hypothesis
+
+
+## problem 3
+## part a
+# k-means
+## i
+################# insert written part 1 here
+
+## ii
+height<- read.table('C:/Users/Administrator/Desktop/Hope Heights.txt',header=T)
+
+# distance funcion
+dist=function(x,y)
+{
+  sqrt(sum((x-y)^2))
+}
+
+# suppose u1 and u2 are the initial value of two means
+# x is the data
+k.means=function(u1,u2,e,x)
+{ k<-0              # k is the number of iterations
+  n<- length(x)
+  d1=d2=10           #initiare di, where di=|ui.new-ui|
+  
+  # store is a k*2 matrix to put all the values of u1 and u2 for each iteration
+  # row i is the values of u1 and u2 in the ith iteration
+  # k is the number of iterations 
+  store<- matrix(rep(0),100,2) # initialize store by 100 rows
+  
+  while (d1>e |d2>e)
+  {
+    # assume u1 amd u2 are fixed, first step is to decide which mean is closer to each point
+    
+    # ctg (category) is a vector stores the assigment of category for each point
+    ctg<- c()
+    for (i in 1:n)
+    {
+      dist1<- dist(x[i],u1)
+      dist2<- dist(x[i],u2)
+      ctg[i]<- ifelse(dist1<dist2,1,2)
+    }
+    # now that the assignment for each point is done
+    # we have to calculate new means
+    
+    # In this step, we have to notice a case, where the intial two means are very separate
+    # from each other and all the date points are clustering to one of them
+    # so in the first iteration, all the points will be assigned to the closer initial mean
+    # and the other intial mean will have no points around
+    # to sovle this situation, the method is the make the further one closer to the data points
+    # so I assign the new ui with value (u1+u2)/2
+    if (sum(ctg==1)==0)
+    {
+      d1<- abs((u1+u2)/2-u1)
+      u1<- (u1+u2)/2         
+    }
+    else{
+      d1<- abs(mean(x[ctg==1])-u1)
+      u1<- mean(x[ctg==1])
+    }
+    
+    if (sum(ctg==2)==0)
+    {    
+      d2<- abd(u2-(u1+u2)/2)
+      u2<- (u2+u1)/2
+    }
+    else{
+      d2<- abs(mean(x[ctg==2])-u2)
+      u2<- mean(x[ctg==2])
+    }
+    
+    k<- k+1
+    # to store the values of u1 and u2 in this iteration in matrix store
+    store[k,]<- c(u1,u2)
+  }
+  # class1 in the vector of index of data points which has been assigned to cluster1
+  class1=which(ctg==1)
+  # class2 in the vector of index of data points which has been assigned to cluster2
+  class2=which(ctg==2)
+  
+  # store.new keep the rows 1 to k, where k is the number of iterations
+  store.new<- store[1:k,]
+  return(list(final.means=c(u1,u2),means.matrix=store.new,class1=class1,class2=class2))
+}
+
+
+x<- as.numeric(height$Height)
+e<- 10^-5
+u1=u2=0
+myresult<- k.means(u1,u2,e,x)
+#$final.means
+#[1] 65.47619 72.25862
+
+#$means.matrix
+#[,1]     [,2]
+#[1,]  0.00000 69.41000
+#[2,] 34.70500 69.41000
+#[3,] 52.05750 69.41000
+#[4,] 60.00000 69.60204
+#[5,] 62.25000 70.38636
+#[6,] 63.77273 71.00000
+#[7,] 64.97143 71.80000
+#[8,] 65.47619 72.25862
+#[9,] 65.47619 72.25862
+
+#$class1
+#[1]  1  2  3  4  5  6  9 10 11 12 13 14 15 17 18 19 20 21 22 24 27 28 30 33 34 35 36 38
+#[29] 39 40 41 42 43 44 46 47 48 49 50 56 73 80
+
+#$class2
+#[1]   7   8  16  23  25  26  29  31  32  37  45  51  52  53  54  55  57  58  59  60  61
+#[22]  62  63  64  65  66  67  68  69  70  71  72  74  75  76  77  78  79  81  82  83  84
+#[43]  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100
+
+# use my k means to try different values, the result are the same
+u1=u2=3
+k.means(u1,u2,e,x)
+#$final.means
+#[1] 65.47619 72.25862
+#the rest outout is omitted
+
+# now use R-inside function to check whether my k.means function is correct or not
+kmeans(x,centers=2)
+# K-means clustering with 2 clusters of sizes 58, 42
+
+#Cluster means:
+#  [,1]
+#1 72.25862
+#2 65.47619
+
+#Clustering vector:
+# [1] 2 2 2 2 2 2 1 1 2 2 2 2 2 2 2 1 2 2 2 2 2 2 1 2 1 1 2 2 1 2 1 1 2 2 2 2 1 2 2 2 2 2
+#[43] 2 2 1 2 2 2 2 2 1 1 1 1 1 2 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 1 1 1 1 1 1 2 1 1 1 1
+#[85] 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+
+# let a= clustering vector
+a<- c(2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,1,2,2,2,2,2,2,1,2,1,1,2,2,
+      1,2,1,1,2,2,2,2,1,2,2,2,2,2,2,2,1,2,2,2,2,2,1,1,1,1,1,2,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,2,1,1,1,1,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)
+
+which(a==1)
+#[1]   7   8  16  23  25  26  29  31  32  37  45  51  52  53  54  55  57  58  59  60  61
+#[22]  62  63  64  65  66  67  68  69  70  71  72  74  75  76  77  78  79  81  82  83  84
+#43]  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100
+
+which(a==2)
+#[1]  1  2  3  4  5  6  9 10 11 12 13 14 15 17 18 19 20 21 22 24 27 28 30 33 34 35 36 38
+#[29] 39 40 41 42 43 44 46 47 48 49 50 56 73 80
+
+# as we can see, the R inside kmeans function has the same result with my kmeans function!
+
+
+
+# now plot the values of u1 and u2 in each iteration
+# m is the matrix, whose row is the values of two means in each iteration
+m<- k.means(u1,u2,e,x)$means.matrix
+v1<- m[,1]
+v2<- m[,2]
+plot(jitter(v1),col = 'red',pch=22,xlim=c(0,9), ylim=c(0,80),xlab = 'Iteration',ylab = 'Means of Heights',main = 'Means for each Iteration')
+text(jitter(v1),label = c('H1'),pos = 2)
+points(jitter(v2),col = 'blue',pch=19)
+text(jitter(v2),label = c('H2'),pos=2)
+
+####### insert picture 5 here
+
+
+# iii
+# accuracy of the prediction
+# in my k.means function, since final means are 65.47619 and 72.25862
+# the former is smaller which corresponds to female
+# the latter corresponds to male
+# thus class1 is female and class2 is female
+pred<- rep(0,length(x))
+class1<- myresult$class1
+class2<- myresult$class2
+pred[class1]<- 1
+pred[class2]<- 2
+accuracy<- sum(pred==height$Gender)/length(x)
+# the accuracy is 0.87
+# so 87% of the students are correctly classfied
+
+
+## part b
+######### insert written part 2 here
+
+## part c
+## i
+# suppose u1,var1 are mean and variance for mixture1
+# u2, var2 are the mean and variance for mixture2
+# p1 and p2 is the prior probability for mixture1 and mixture2 respectively
+
+EM=function(u1,u2,var1,var2,p1,p2,e,x)
+{
+  
+  n<- length(x) 
+  sd1<- sqrt(var1)
+  sd2<- sqrt(var1)
+  
+  # llh is a vector to store loglikelihood function in each iteration
+  llh<- c()
+  llh[1]<- 0
+  llh[2]<- sum(log(p1*dnorm(x,u1,sd1)+p2*dnorm(x,u2,sd2)))
+  
+  # since we have the initial value of mean and variance for each mixture
+  # we can compute the probability that each point is coming from which distribution
+  
+  k<- 2
+
+  while (abs(llh[k]-llh[k-1])>e)
+  {
+    # r1 and r2 are to store ri1 and ri2
+    r1<- c()
+    r2<- c()
+    for (i in 1:n)
+    {
+      # the probability that the point is from mixture 1 is
+      r1[i]<- dnorm(x[i],u1,sd1)*p1/(dnorm(x[i],u1,sd1)*p1+dnorm(x[i],u2,sd2)*p2)
+      r2[i]<- dnorm(x[i],u2,sd2)*p2/(dnorm(x[i],u1,sd1)*p1+dnorm(x[i],u2,sd2)*p2)
+    }
+    
+    # now that we have computed the probability that each point comes from which mixture
+    # we can use the result to get updated mean, variance and prior probability p for mixture1
+    u1<- sum(r1*x)/sum(r1)
+    u2<- sum(r2*x)/sum(r2)
+    var1<- sum(r1*(x-u1)^2)/sum(r1)
+    sd1<- sqrt(var1)
+    var2<- sum(r2*(x-u2)^2)/sum(r2)
+    sd2<- sqrt(var2)
+    p1<- sum(r1)/n
+    p2<- sum(r2)/n
+    k<- k+1
+    llh[k]<- sum(log(p1*dnorm(x,u1,sd1)+p2*dnorm(x,u2,sd2)))
+
+  }
+
+  return(list(loglikelihood=llh
+              ,mean=c(u1,u2),variance=c(var1,var2),
+              probability=c(p1,p2),r1=r1,r2=r2))
+  
+}
+
+u1=60
+u2=70
+var1=0.5
+var2=2
+p1=0.4
+p2=0.6
+e<- 10^-6
+myEM<- EM(u1,u2,var1,var2,p1,p2,e,x)
+#$loglikelihood
+#[1]     0.0000 -1158.1413  -283.5708  -282.4967  -282.2371  -282.1431  -282.1012
+#[8]  -282.0792  -282.0658  -282.0562  -282.0479  -282.0399  -282.0314  -282.0217
+#[15]  -282.0103  -281.9967  -281.9802  -281.9601  -281.9354  -281.9049  -281.8673
+#[22]  -281.8211  -281.7648  -281.6967  -281.6151  -281.5171  -281.3974  -281.2466
+#[29]  -281.0514  -280.8018  -280.5167  -280.2785  -280.1557  -280.1068  -280.0887
+#[36]  -280.0827  -280.0810  -280.0805  -280.0804  -280.0804  -280.0804  -280.0804
+#[43]  -280.0804
+
+#$mean
+#[1] 60.61364 69.78353
+
+#$variance
+#[1]  0.272951 13.995129
+
+#$probability
+#[1] 0.04073485 0.95926515
+
+#$r1
+#[1]  1.474453e-33  1.474453e-33  1.474453e-33  8.233936e-01  1.395930e-44  7.635667e-10
+#[7]  3.644031e-57  5.205660e-87  1.474453e-33  1.474453e-33  4.294217e-24  4.661619e-05
+# the rest are omitted here
+
+#$r2
+#[1] 1.0000000 1.0000000 1.0000000 0.1766064 1.0000000 1.0000000 1.0000000 1.0000000
+#[9] 1.0000000 1.0000000 1.0000000 0.9999534 1.0000000 0.9272319 1.0000000 1.0000000
+# the rest are omitted here
+
+
+# to check my answer with R inside function normalmixEM
+library(mixtools)
+sd1=sqrt(var1)
+sd2=sqrt(var2)
+normalmixEM(x,lambda=c(p1,p2),mu=c(u1,u2),sigma=c(var1,var2),k=2)
+
+#$lambda
+#[1] 0.04072845 0.95927155
+
+#$mu
+#[1] 60.61355 69.78348
+
+#$sigma (which is standard deviation while mine returns variance)
+#[1] 0.5223663 3.7410591
+
+#$loglik
+#[1] -280.0804
+
+#$all.loglik
+#[1] -370.0873 -280.6013 -280.2017 -280.1145 -280.0888 -280.0822 -280.0807 -280.0804
+#[9] -280.0804 -280.0804 -280.0804 -280.0804 -280.0804 -280.0804
+
+#$posterior
+#comp.1    comp.2
+#[1,]  1.396515e-33 1.0000000
+#[2,]  1.396515e-33 1.0000000
+#[3,]  1.396515e-33 1.0000000
+#[4,]  8.233574e-01 0.1766426
+#[5,]  1.299284e-44 1.0000000
+#[6,]  7.510236e-10 1.0000000
+#[7,]  3.325013e-57 1.0000000
+#[8,]  4.531725e-87 1.0000000
+#[9,]  1.396515e-33 1.0000000
+#[10,]  1.396515e-33 1.0000000
+# the rest are omitted here
+
+
+# as we can see, my result is the almost the same as the r inside function's result
+# my r.matrix is also almost the same to r-inside function poterior rinside.rmatirx
+
+
+# plot how likelihood function changes with each iteration
+plot(myEM$loglikelihood,main = 'Log-likelihood in Each Iteration',xlab = 'Iteration',ylab = 'EM Log-Likelihood')
+############### insert picture 6 here
+# as we can see, the likelihood function of theta converges from the 3rd iteration 
+
+## ii
+r.ij<- as.data.frame(cbind(myEM$r1,myEM$r2))
+pred<- ifelse(r.ij$V1<r.ij$V2,2,1)
+comp<- data.frame(true=height$Gender,pred=pred)
+accuracy<- sum(comp$true==comp$pred)/n
+# the accuracy is only 0.55, thus I think k means is better than EM in this case
